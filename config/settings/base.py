@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from decouple import config
+from datetime import timedelta
 
 # -----------------------------------------------------------------------------
 # Base Configuration
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     # Third Party Apps
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "django_filters",
     "corsheaders",
@@ -177,6 +179,8 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
     ),
+
+    "EXCEPTION_HANDLER": "apps.core.exceptions.custom_exception_handler",
 }
 
 # -----------------------------------------------------------------------------
@@ -187,8 +191,23 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "APIHub API",
     "DESCRIPTION": "Enterprise API Developer Portal",
     "VERSION": "1.0.0",
+
+    # Hide the schema endpoint from Swagger UI
+    "SERVE_INCLUDE_SCHEMA": False,
+
+    # Generate separate request and response schemas
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 
 
 AUTH_USER_MODEL = "accounts.User"
+
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+}

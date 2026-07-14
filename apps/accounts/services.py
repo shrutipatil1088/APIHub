@@ -34,3 +34,14 @@ class AuthenticationService:
                 "is_verified": user.is_verified,
             },
         }
+    
+
+    @staticmethod
+    def logout_user(refresh_token):
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        
+
+    @staticmethod
+    def get_profile(user):
+        return user
