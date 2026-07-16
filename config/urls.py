@@ -28,9 +28,6 @@ from drf_spectacular.views import (
 urlpatterns = [
     path("admin/", admin.site.urls),
 
-    # Authentication APIs
-    path("api/v1/auth/", include("apps.accounts.urls")),
-
     # OpenAPI Schema
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
 
@@ -48,5 +45,11 @@ urlpatterns = [
     ),
 
     path("api/v1/", include("apps.core.urls")),
+
+    # Authentication APIs
+    path("api/v1/auth/", include("apps.accounts.urls")),
+
+    # API Catalog APIs
+    path("api/v1/apis/", include("apps.api_catalog.urls")),
 ]
 
