@@ -5,10 +5,12 @@ from django.utils.text import slugify
 
 from rest_framework.exceptions import ValidationError
 
-from .models import API
+from .models import API, APIVersion
 from .filters import (
     APIFilter,
     ALLOWED_ORDERING_FIELDS,
+    APIVersionFilter,
+    ALLOWED_VERSION_ORDERING_FIELDS,
 )
 
 # Contains business logic for the API module.
@@ -91,3 +93,80 @@ class APIService:
     @staticmethod
     def delete_api(api):
         api.soft_delete()
+
+
+# Contains business logic for the API Version module.
+class APIVersionService:
+
+    # Return API Version list with search, filter and ordering.
+    @staticmethod
+    def list_versions(api_uuid, query_params):
+        # Validate parent API exists and is not soft deleted.
+        api = APIService.get_api(api_uuid)
+
+        ordering = query_params.get("ordering")
+
+        if ordering and ordering not in ALLOWED_VERSION_ORDERING_FIELDS:
+            raise ValidationError(
+                {
+                    "ordering": [
+                        (
+                            "Invalid ordering field. Allowed values are: "
+                            f"{', '.join(sorted(ALLOWED_VERSION_ORDERING_FIELDS))}."
+                        )
+                    ]
+                }
+            )
+
+        queryset = (
+            APIVersion.objects
+            .filter(api=api, is_deleted=False)
+            .select_related("api")
+        )
+
+        return APIVersionFilter(
+            query_params,
+            queryset=queryset,
+        ).qs
+
+    # Fetch a single API Version by UUID.
+    @staticmethod
+    def get_version(uuid):
+        return get_object_or_404(
+            APIVersion.objects.select_related("api"),
+            uuid=uuid,
+            is_deleted=False,
+            api__is_deleted=False,
+        )
+
+    # Create a new API Version.
+    @staticmethod
+    def create_version(api, validated_data):
+        return APIVersion.objects.create(
+            api=api,
+            **validated_data,
+        )
+
+    # Update an existing API Version.
+    @staticmethod
+    def update_version(version, validated_data):
+        for field, value in validated_data.items():
+            setattr(
+                version,
+                field,
+                value,
+            )
+
+        version.save(
+            update_fields=[
+                *validated_data.keys(),
+                "updated_at",
+            ]
+        )
+
+        return version
+
+    # Soft delete an API Version.
+    @staticmethod
+    def delete_version(version):
+        version.soft_delete()

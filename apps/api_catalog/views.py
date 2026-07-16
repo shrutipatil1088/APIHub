@@ -10,7 +10,7 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 
-from .models import API
+from .models import API, APIVersion
 
 from apps.core.permissions import IsAdminRole
 from apps.core.responses import success_response
@@ -20,8 +20,12 @@ from .serializers import (
     UpdateAPISerializer,
     APIListSerializer,
     APISerializer,
+    CreateAPIVersionSerializer,
+    UpdateAPIVersionSerializer,
+    APIVersionListSerializer,
+    APIVersionSerializer,
 )
-from .services import APIService
+from .services import APIService, APIVersionService
 
 from apps.core.pagination import StandardResultsSetPagination
 
@@ -291,4 +295,260 @@ class APIDetailAPIView(APIView):
 
         return success_response(
             message="API deleted successfully.",
+        )
+
+
+# ============================================================================
+# API Version List & Create
+# Handles:
+# GET  -> List all versions for a specific API
+# POST -> Create a new version for a specific API
+# ============================================================================
+class APIVersionListCreateAPIView(APIView):
+
+    # Assign permissions based on request method.
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [
+                IsAuthenticated(),
+                IsAdminRole(),
+            ]
+
+        return [
+            IsAuthenticated(),
+        ]
+
+    # Swagger documentation for List API Versions.
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="is_latest",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by latest version.",
+            ),
+            OpenApiParameter(
+                name="is_active",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by active status.",
+            ),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Search versions by version string.",
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Order results. "
+                    "Available values: "
+                    "version, -version, created_at, -created_at, "
+                    "updated_at, -updated_at, is_latest, -is_latest."
+                ),
+            ),
+            OpenApiParameter(
+                name="page",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Page number.",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Number of records per page (max 100).",
+            ),
+        ],
+        responses={200: APIVersionListSerializer(many=True)},
+        tags=["API Versions"],
+    )
+    # GET  -> List all versions for a specific API
+    def get(self, request, api_uuid):
+        # Get filtered/search/ordered queryset.
+        versions = APIVersionService.list_versions(
+            api_uuid,
+            request.query_params,
+        )
+
+        # Apply pagination.
+        paginator = StandardResultsSetPagination()
+
+        page = paginator.paginate_queryset(
+            versions,
+            request,
+        )
+
+        # Convert queryset into JSON.
+        serializer = APIVersionListSerializer(
+            page,
+            many=True,
+        )
+
+        # Return paginated response.
+        return paginator.get_paginated_response(
+            serializer.data,
+        )
+
+    # Swagger documentation for Create API Version.
+    @extend_schema(
+        request=CreateAPIVersionSerializer,
+        responses={201: APIVersionSerializer},
+        tags=["API Versions"],
+    )
+    # POST -> Create a new version for a specific API
+    def post(self, request, api_uuid):
+        # Fetch parent API to assert existence.
+        api = APIService.get_api(api_uuid)
+
+        # Validate request data.
+        serializer = CreateAPIVersionSerializer(
+            data=request.data,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        # Create new API Version.
+        version = APIVersionService.create_version(
+            api,
+            serializer.validated_data,
+        )
+
+        # Return created object.
+        return success_response(
+            data=APIVersionSerializer(version).data,
+            message="API Version created successfully.",
+            status_code=status.HTTP_201_CREATED,
+        )
+
+
+# ============================================================================
+# API Version Detail
+# Handles:
+# GET    -> Retrieve API Version
+# PUT    -> Full Update API Version
+# PATCH  -> Partial Update API Version
+# DELETE -> Soft Delete API Version
+# ============================================================================
+class APIVersionDetailAPIView(APIView):
+
+    # Assign permissions based on request method.
+    def get_permissions(self):
+        if self.request.method in (
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ):
+            return [
+                IsAuthenticated(),
+                IsAdminRole(),
+            ]
+
+        return [
+            IsAuthenticated(),
+        ]
+
+    # Swagger documentation for Retrieve API Version.
+    @extend_schema(
+        responses={200: APIVersionSerializer},
+        tags=["API Versions"],
+    )
+    # 1. Detail API Version
+    def get(self, request, uuid):
+        # Fetch API Version by UUID.
+        version = APIVersionService.get_version(uuid)
+
+        # Convert model into JSON.
+        serializer = APIVersionSerializer(version)
+
+        return success_response(
+            data=serializer.data,
+            message="API Version fetched successfully.",
+        )
+
+    # Swagger documentation for Full Update.
+    @extend_schema(
+        request=UpdateAPIVersionSerializer,
+        responses={200: APIVersionSerializer},
+        tags=["API Versions"],
+    )
+    # 2. Update API Version
+    def put(self, request, uuid):
+        # Fetch existing API Version.
+        version = APIVersionService.get_version(uuid)
+
+        # Validate complete request data.
+        serializer = UpdateAPIVersionSerializer(
+            version,
+            data=request.data,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        version = APIVersionService.update_version(
+            version,
+            serializer.validated_data,
+        )
+
+        return success_response(
+            data=APIVersionSerializer(version).data,
+            message="API Version updated successfully.",
+        )
+
+    # Swagger documentation for Partial Update.
+    @extend_schema(
+        request=UpdateAPIVersionSerializer,
+        responses={200: APIVersionSerializer},
+        tags=["API Versions"],
+    )
+    # 3. Partial Update API Version
+    def patch(self, request, uuid):
+        # Fetch existing API Version.
+        version = APIVersionService.get_version(uuid)
+
+        # Validate only provided fields.
+        serializer = UpdateAPIVersionSerializer(
+            version,
+            data=request.data,
+            partial=True,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        version = APIVersionService.update_version(
+            version,
+            serializer.validated_data,
+        )
+
+        return success_response(
+            data=APIVersionSerializer(version).data,
+            message="API Version updated successfully.",
+        )
+
+    # Swagger documentation for Delete API Version.
+    @extend_schema(
+        responses={200: None},
+        tags=["API Versions"],
+    )
+    # 4. Delete API Version
+    def delete(self, request, uuid):
+        # Fetch existing API Version.
+        version = APIVersionService.get_version(uuid)
+
+        APIVersionService.delete_version(version)
+
+        return success_response(
+            message="API Version deleted successfully.",
         )

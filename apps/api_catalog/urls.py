@@ -4,6 +4,8 @@ from django.urls import path
 from .views import (
     APIListCreateAPIView,
     APIDetailAPIView,
+    APIVersionListCreateAPIView,
+    APIVersionDetailAPIView,
 )
 
 urlpatterns = [
@@ -20,5 +22,19 @@ urlpatterns = [
         "<uuid:uuid>/",
         APIDetailAPIView.as_view(),
         name="api-detail",
+    ),
+
+    # List all versions for a specific API and create a new version.
+    path(
+        "<uuid:api_uuid>/versions/",
+        APIVersionListCreateAPIView.as_view(),
+        name="api-version-list-create",
+    ),
+
+    # Retrieve, update, or delete a specific version by UUID.
+    path(
+        "versions/<uuid:uuid>/",
+        APIVersionDetailAPIView.as_view(),
+        name="api-version-detail",
     ),
 ]

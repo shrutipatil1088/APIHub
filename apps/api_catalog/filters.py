@@ -3,7 +3,7 @@
 # It provides ready-made filter classes
 from django_filters import rest_framework as filters
 
-from .models import API
+from .models import API, APIVersion
 
 # Allowed values for the "ordering" query parameter.
 # Used in services.py to validate user input.
@@ -53,4 +53,55 @@ class APIFilter(filters.FilterSet):
             "status",
             "search",
             "is_active",
+        )
+
+
+# Allowed values for the "ordering" query parameter for API versions.
+# Used in services.py to validate user input.
+ALLOWED_VERSION_ORDERING_FIELDS = {
+    "version",
+    "-version",
+    "created_at",
+    "-created_at",
+    "updated_at",
+    "-updated_at",
+    "is_latest",
+    "-is_latest",
+}
+
+
+
+class APIVersionFilter(filters.FilterSet):
+    """
+    Handles filtering, searching and ordering for the API Version list endpoint.
+    """
+
+    # Filter by latest version.
+    is_latest = filters.BooleanFilter()
+
+    # Filter by active status.
+    is_active = filters.BooleanFilter()
+
+    # Search version using a case-insensitive partial match.
+    search = filters.CharFilter(
+        field_name="version",
+        lookup_expr="icontains",
+    )
+
+    # Sort the results.
+    ordering = filters.OrderingFilter(
+        fields=(
+            ("version", "version"),
+            ("created_at", "created_at"),
+            ("updated_at", "updated_at"),
+            ("is_latest", "is_latest"),
+        ),
+    )
+
+    class Meta:
+        model = APIVersion
+        fields = (
+            "is_latest",
+            "is_active",
+            "search",
         )
