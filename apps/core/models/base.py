@@ -24,6 +24,10 @@ class BaseModel(models.Model):
         default=True,
     )
 
+    is_deleted = models.BooleanField(
+        default=False,
+    )
+
     class Meta:
         abstract = True
 
@@ -31,11 +35,11 @@ class BaseModel(models.Model):
         """
         Soft delete the object.
         """
-        self.is_active = False
+        self.is_deleted = True
         self.deleted_at = timezone.now()
         self.save(
             update_fields=[
-                "is_active",
+                "is_deleted",
                 "deleted_at",
             ]
         )
@@ -44,11 +48,11 @@ class BaseModel(models.Model):
         """
         Restore a soft deleted object.
         """
-        self.is_active = True
+        self.is_deleted = False
         self.deleted_at = None
         self.save(
             update_fields=[
-                "is_active",
+                "is_deleted",
                 "deleted_at",
             ]
         )

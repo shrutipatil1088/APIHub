@@ -52,4 +52,5 @@ class APIFilter(filters.FilterSet):
         fields = (
             "status",
             "search",
+            "is_active",
         )

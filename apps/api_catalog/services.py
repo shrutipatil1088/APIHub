@@ -33,7 +33,7 @@ class APIService:
 
         queryset = (
             API.objects
-            .filter(is_active=True)
+            .filter(is_deleted=False)
             .select_related("created_by")
         )
 
@@ -48,7 +48,7 @@ class APIService:
         return get_object_or_404(
             API.objects.select_related("created_by"),
             uuid=uuid,
-            is_active=True,
+            is_deleted=False,
         )
 
     # Create a new API.

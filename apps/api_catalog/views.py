@@ -68,6 +68,13 @@ class APIListCreateAPIView(APIView):
             ),
 
             OpenApiParameter(
+                name="is_active",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter APIs by active status.",
+            ),
+
+            OpenApiParameter(
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
@@ -132,7 +139,6 @@ class APIListCreateAPIView(APIView):
     )
     # POST -> Create a new API
     def post(self, request):
-
         # Validate request data.
         serializer = CreateAPISerializer(
             data=request.data,

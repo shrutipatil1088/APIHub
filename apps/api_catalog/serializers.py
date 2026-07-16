@@ -22,6 +22,7 @@ class APIBaseSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "status",
+            "is_active",
         )
 
     # # Validate API name.
@@ -35,7 +36,7 @@ class APIBaseSerializer(serializers.ModelSerializer):
 
         queryset = API.objects.filter(
             name=value,
-            is_active=True,
+            is_deleted=False,
         )
 
         if self.instance:
@@ -118,6 +119,7 @@ class APIListSerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "status",
+            "is_active",
         )
 
 # Serializer used for API detail response.
@@ -142,4 +144,5 @@ class APISerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
+            "is_active",
         )
