@@ -3,7 +3,8 @@
 # It provides ready-made filter classes
 from django_filters import rest_framework as filters
 
-from .models import API, APIVersion
+from django.db.models import Q
+from .models import API, APIVersion, Endpoint
 
 # Allowed values for the "ordering" query parameter.
 # Used in services.py to validate user input.
@@ -104,4 +105,60 @@ class APIVersionFilter(filters.FilterSet):
             "is_latest",
             "is_active",
             "search",
+        )
+
+
+# Allowed values for the "ordering" query parameter for Endpoints.
+# Used in services.py to validate user input.
+ALLOWED_ENDPOINT_ORDERING_FIELDS = {
+    "path",
+    "-path",
+    "method",
+    "-method",
+    "created_at",
+    "-created_at",
+    "updated_at",
+    "-updated_at",
+}
+
+
+class EndpointFilter(filters.FilterSet):
+    """
+    Handles filtering, searching and ordering for the API Endpoint list endpoint.
+    """
+
+    # Filter by endpoint HTTP method.
+    method = filters.ChoiceFilter(
+        choices=Endpoint.Method.choices,
+    )
+
+    # Filter by active status.
+    is_active = filters.BooleanFilter()
+
+    # Search path or summary using a case-insensitive partial match.
+    search = filters.CharFilter(
+        method="filter_search",
+    )
+
+    # Sort the results.
+    ordering = filters.OrderingFilter(
+        fields=(
+            ("path", "path"),
+            ("method", "method"),
+            ("created_at", "created_at"),
+            ("updated_at", "updated_at"),
+        ),
+    )
+
+    class Meta:
+        model = Endpoint
+        fields = (
+            "method",
+            "is_active",
+            "search",
+        )
+
+    def filter_search(self, queryset, name, value):
+        return queryset.filter(
+            Q(path__icontains=value) | Q(summary__icontains=value)
         )
