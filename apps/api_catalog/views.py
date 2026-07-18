@@ -10,7 +10,7 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 
-from .models import API, APIVersion
+from .models import API, APIVersion, Endpoint
 
 from apps.core.permissions import IsAdminRole
 from apps.core.responses import success_response
@@ -24,8 +24,13 @@ from .serializers import (
     UpdateAPIVersionSerializer,
     APIVersionListSerializer,
     APIVersionSerializer,
+    CreateEndpointSerializer,
+    UpdateEndpointSerializer,
+    EndpointListSerializer,
+    EndpointSerializer,
+    APIDocumentationSerializer,
 )
-from .services import APIService, APIVersionService
+from .services import APIService, APIVersionService, EndpointService
 
 from apps.core.pagination import StandardResultsSetPagination
 
@@ -551,4 +556,286 @@ class APIVersionDetailAPIView(APIView):
 
         return success_response(
             message="API Version deleted successfully.",
+        )
+
+
+# ============================================================================
+# API Endpoint List & Create
+# Handles:
+# GET  -> List all endpoints for a specific API version
+# POST -> Create a new endpoint for a specific API version
+# ============================================================================
+class EndpointListCreateAPIView(APIView):
+
+    # Assign permissions based on request method.
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [
+                IsAuthenticated(),
+                IsAdminRole(),
+            ]
+
+        return [
+            IsAuthenticated(),
+        ]
+
+    # Swagger documentation for List Endpoints.
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="method",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter by HTTP method.",
+                enum=Endpoint.Method.choices,
+            ),
+            OpenApiParameter(
+                name="is_active",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by active status.",
+            ),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Search endpoints by path or summary.",
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Order results. "
+                    "Available values: "
+                    "path, -path, method, -method, created_at, -created_at, updated_at, -updated_at."
+                ),
+            ),
+            OpenApiParameter(
+                name="page",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Page number.",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Number of records per page (max 100).",
+            ),
+        ],
+        responses={200: EndpointListSerializer(many=True)},
+        tags=["API Endpoints"],
+    )
+    # GET  -> List all endpoints for a specific API version
+    def get(self, request, version_uuid):
+        # Get filtered/search/ordered queryset.
+        endpoints = EndpointService.list_endpoints(
+            version_uuid,
+            request.query_params,
+        )
+
+        # Apply pagination.
+        paginator = StandardResultsSetPagination()
+
+        page = paginator.paginate_queryset(
+            endpoints,
+            request,
+        )
+
+        # Convert queryset into JSON.
+        serializer = EndpointListSerializer(
+            page,
+            many=True,
+        )
+
+        # Return paginated response.
+        return paginator.get_paginated_response(
+            serializer.data,
+        )
+
+    # Swagger documentation for Create Endpoint.
+    @extend_schema(
+        request=CreateEndpointSerializer,
+        responses={201: EndpointSerializer},
+        tags=["API Endpoints"],
+    )
+    # POST -> Create a new endpoint for a specific API version
+    def post(self, request, version_uuid):
+        # Fetch parent version to assert existence.
+        version = APIVersionService.get_version(version_uuid)
+
+        # Validate request data.
+        serializer = CreateEndpointSerializer(
+            data=request.data,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        # Create new Endpoint.
+        endpoint = EndpointService.create_endpoint(
+            version,
+            serializer.validated_data,
+        )
+
+        # Return created object.
+        return success_response(
+            data=EndpointSerializer(endpoint).data,
+            message="Endpoint created successfully.",
+            status_code=status.HTTP_201_CREATED,
+        )
+
+
+# ============================================================================
+# API Endpoint Detail
+# Handles:
+# GET    -> Retrieve Endpoint
+# PUT    -> Full Update Endpoint
+# PATCH  -> Partial Update Endpoint
+# DELETE -> Soft Delete Endpoint
+# ============================================================================
+class EndpointDetailAPIView(APIView):
+
+    # Assign permissions based on request method.
+    def get_permissions(self):
+        if self.request.method in (
+            "PUT",
+            "PATCH",
+            "DELETE",
+        ):
+            return [
+                IsAuthenticated(),
+                IsAdminRole(),
+            ]
+
+        return [
+            IsAuthenticated(),
+        ]
+
+    # Swagger documentation for Retrieve Endpoint.
+    @extend_schema(
+        responses={200: EndpointSerializer},
+        tags=["API Endpoints"],
+    )
+    # 1. Detail Endpoint
+    def get(self, request, uuid):
+        # Fetch Endpoint by UUID.
+        endpoint = EndpointService.get_endpoint(uuid)
+
+        # Convert model into JSON.
+        serializer = EndpointSerializer(endpoint)
+
+        return success_response(
+            data=serializer.data,
+            message="Endpoint fetched successfully.",
+        )
+
+    # Swagger documentation for Full Update.
+    @extend_schema(
+        request=UpdateEndpointSerializer,
+        responses={200: EndpointSerializer},
+        tags=["API Endpoints"],
+    )
+    # 2. Update Endpoint
+    def put(self, request, uuid):
+        # Fetch existing Endpoint.
+        endpoint = EndpointService.get_endpoint(uuid)
+
+        # Validate complete request data.
+        serializer = UpdateEndpointSerializer(
+            endpoint,
+            data=request.data,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        endpoint = EndpointService.update_endpoint(
+            endpoint,
+            serializer.validated_data,
+        )
+
+        return success_response(
+            data=EndpointSerializer(endpoint).data,
+            message="Endpoint updated successfully.",
+        )
+
+    # Swagger documentation for Partial Update.
+    @extend_schema(
+        request=UpdateEndpointSerializer,
+        responses={200: EndpointSerializer},
+        tags=["API Endpoints"],
+    )
+    # 3. Partial Update Endpoint
+    def patch(self, request, uuid):
+        # Fetch existing Endpoint.
+        endpoint = EndpointService.get_endpoint(uuid)
+
+        # Validate only provided fields.
+        serializer = UpdateEndpointSerializer(
+            endpoint,
+            data=request.data,
+            partial=True,
+            context={"view": self},
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        endpoint = EndpointService.update_endpoint(
+            endpoint,
+            serializer.validated_data,
+        )
+
+        return success_response(
+            data=EndpointSerializer(endpoint).data,
+            message="Endpoint updated successfully.",
+        )
+
+    # Swagger documentation for Delete Endpoint.
+    @extend_schema(
+        responses={200: None},
+        tags=["API Endpoints"],
+    )
+    # 4. Delete Endpoint
+    def delete(self, request, uuid):
+        # Fetch existing Endpoint.
+        endpoint = EndpointService.get_endpoint(uuid)
+
+        EndpointService.delete_endpoint(endpoint)
+
+        return success_response(
+            message="Endpoint deleted successfully.",
+        )
+
+
+# ============================================================================
+# API Documentation
+# Handles:
+# GET -> Retrieve complete API documentation including versions and endpoints.
+# ============================================================================
+class APIDocumentationAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    # Swagger documentation for Retrieve API Documentation.
+    @extend_schema(
+        responses={200: APIDocumentationSerializer},
+        tags=["API Documentation"],
+        summary="Retrieve complete API documentation including versions and endpoints.",
+    )
+    def get(self, request, api_uuid):
+        api = APIService.get_api_documentation(api_uuid)
+
+        # Convert nested structure to JSON.
+        serializer = APIDocumentationSerializer(api)
+
+        return success_response(
+            data=serializer.data,
+            message="API documentation fetched successfully.",
         )

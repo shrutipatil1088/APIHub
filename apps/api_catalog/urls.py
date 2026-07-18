@@ -6,6 +6,9 @@ from .views import (
     APIDetailAPIView,
     APIVersionListCreateAPIView,
     APIVersionDetailAPIView,
+    EndpointListCreateAPIView,
+    EndpointDetailAPIView,
+    APIDocumentationAPIView,
 )
 
 urlpatterns = [
@@ -31,10 +34,31 @@ urlpatterns = [
         name="api-version-list-create",
     ),
 
+    # Retrieve complete API documentation including versions and endpoints.
+    path(
+        "<uuid:api_uuid>/documentation/",
+        APIDocumentationAPIView.as_view(),
+        name="api-documentation",
+    ),
+
     # Retrieve, update, or delete a specific version by UUID.
     path(
         "versions/<uuid:uuid>/",
         APIVersionDetailAPIView.as_view(),
         name="api-version-detail",
+    ),
+
+    # List all endpoints for a specific API version and create a new endpoint.
+    path(
+        "versions/<uuid:version_uuid>/endpoints/",
+        EndpointListCreateAPIView.as_view(),
+        name="endpoint-list-create",
+    ),
+
+    # Retrieve, update, or delete a specific endpoint by UUID.
+    path(
+        "endpoints/<uuid:uuid>/",
+        EndpointDetailAPIView.as_view(),
+        name="endpoint-detail",
     ),
 ]

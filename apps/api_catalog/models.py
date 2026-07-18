@@ -4,6 +4,8 @@ from django.db import models
 import uuid
 
 from django.conf import settings
+from django.core.validators import RegexValidator
+from django.db import transaction
 from apps.core.models.base import BaseModel
 
 # API Model
@@ -71,6 +73,12 @@ class APIVersion(BaseModel):
 
     version = models.CharField(
         max_length=20,
+        validators=[
+            RegexValidator(
+                regex=r"^v\d+(\.\d+)*$",
+                message="Version must be in a format like 'v1', 'v2', 'v1.0', or 'v1.0.1'."
+            )
+        ]
     )
 
     release_notes = models.TextField(
@@ -88,6 +96,15 @@ class APIVersion(BaseModel):
 
     def __str__(self):
         return f"{self.api.name} - {self.version}"
+
+    def save(self, *args, **kwargs):
+        if self.is_latest:
+            with transaction.atomic():
+                qs = APIVersion.objects.filter(api=self.api, is_latest=True)
+                if self.pk:
+                    qs = qs.exclude(pk=self.pk)
+                qs.update(is_latest=False)
+        super().save(*args, **kwargs)
     
 
 # 3. Endpoint Model
