@@ -1,8 +1,16 @@
+from datetime import timedelta
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
-from .models import SubscriptionPlan
-from .filters import SubscriptionPlanFilter, ALLOWED_ORDERING_FIELDS
+from apps.accounts.models import User
+from .models import SubscriptionPlan, UserSubscription
+from .filters import (
+    SubscriptionPlanFilter,
+    ALLOWED_ORDERING_FIELDS,
+    UserSubscriptionFilter,
+    ALLOWED_USER_SUBSCRIPTION_ORDERING_FIELDS,
+)
 
 
 # Contains business logic for the SubscriptionPlan module.
@@ -86,3 +94,125 @@ class SubscriptionPlanService:
     @staticmethod
     def delete_plan(plan):
         plan.soft_delete()
+
+
+# Contains business logic for the UserSubscription module.
+class UserSubscriptionService:
+
+    # Return UserSubscription list with search, filter and ordering.
+    @staticmethod
+    def list_subscriptions(query_params):
+        ordering = query_params.get("ordering")
+
+        if ordering and ordering not in ALLOWED_USER_SUBSCRIPTION_ORDERING_FIELDS:
+            raise ValidationError(
+                {
+                    "ordering": [
+                        (
+                            "Invalid ordering field. Allowed values are: "
+                            f"{', '.join(sorted(ALLOWED_USER_SUBSCRIPTION_ORDERING_FIELDS))}."
+                        )
+                    ]
+                }
+            )
+
+        queryset = (
+            UserSubscription.objects
+            .filter(is_deleted=False)
+            .select_related("user", "plan")
+        )
+
+        return UserSubscriptionFilter(
+            query_params,
+            queryset=queryset,
+        ).qs
+
+    # Fetch a single subscription by UUID.
+    @staticmethod
+    def get_subscription(uuid):
+        return get_object_or_404(
+            UserSubscription.objects.select_related("user", "plan"),
+            uuid=uuid,
+            is_deleted=False,
+        )
+
+    # Purchase/create a new subscription.
+    @staticmethod
+    def create_subscription(user, validated_data):
+        # Validate that only DEVELOPER role users can purchase a plan.
+        if user.role != User.Role.DEVELOPER:
+            raise ValidationError(
+                {"detail": "Only developers can purchase a subscription plan."}
+            )
+
+        plan = validated_data.get("plan")
+        auto_renew = validated_data.get("auto_renew", True)
+
+        # Check if the user already has an active subscription
+        active_sub_exists = UserSubscription.objects.filter(
+            user=user,
+            status=UserSubscription.Status.ACTIVE,
+            is_deleted=False,
+        ).exists()
+
+        if active_sub_exists:
+            raise ValidationError(
+                {"detail": "User already has an active subscription."}
+            )
+
+        # Calculate dates
+        start_date = timezone.now()
+        if plan.billing_cycle == SubscriptionPlan.BillingCycle.MONTHLY:
+            end_date = start_date + timedelta(days=30)
+        elif plan.billing_cycle == SubscriptionPlan.BillingCycle.YEARLY:
+            end_date = start_date + timedelta(days=365)
+        else:
+            # Fallback/Safety
+            end_date = start_date + timedelta(days=30)
+
+        # Create user subscription
+        return UserSubscription.objects.create(
+            user=user,
+            plan=plan,
+            start_date=start_date,
+            end_date=end_date,
+            status=UserSubscription.Status.ACTIVE,
+            auto_renew=auto_renew,
+        )
+
+    # Update subscription status and renewal options.
+    @staticmethod
+    def update_subscription(subscription, validated_data):
+        for field, value in validated_data.items():
+            setattr(
+                subscription,
+                field,
+                value,
+            )
+
+        subscription.save(
+            update_fields=[
+                *validated_data.keys(),
+                "updated_at",
+            ]
+        )
+
+        return subscription
+
+    # Soft delete a subscription.
+    @staticmethod
+    def delete_subscription(subscription):
+        subscription.soft_delete()
+
+    # Get subscriptions belonging to the user.
+    @staticmethod
+    def get_my_subscriptions(user):
+        return (
+            UserSubscription.objects
+            .filter(
+                user=user,
+                is_deleted=False,
+            )
+            .select_related("user", "plan")
+            .order_by("-created_at")
+        )

@@ -52,7 +52,7 @@ urlpatterns = [
     # API Catalog APIs
     path("api/v1/apis/", include("apps.api_catalog.urls")),
 
-    # Subscription Plans APIs
-    path("api/v1/subscription-plans/", include("apps.subscriptions.urls")),
+    # Subscriptions and Plans APIs
+    path("api/v1/", include("apps.subscriptions.urls")),
 ]
 

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import SubscriptionPlan
+from apps.accounts.models import User
+from .models import SubscriptionPlan, UserSubscription
 
 
 class SubscriptionPlanBaseSerializer(serializers.ModelSerializer):
@@ -151,6 +152,124 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
             "billing_cycle",
             "request_limit",
             "is_active",
+            "created_at",
+            "updated_at",
+        )
+
+
+# ============================================================================
+# UserSubscription Serializers
+# ============================================================================
+
+class CreateUserSubscriptionSerializer(serializers.Serializer):
+    """
+    Serializer used while purchasing a subscription.
+    """
+    plan = serializers.UUIDField(required=True)
+    auto_renew = serializers.BooleanField(default=True)
+
+    def validate_plan(self, value):
+        try:
+            plan = SubscriptionPlan.objects.get(
+                uuid=value,
+                is_deleted=False,
+            )
+        except SubscriptionPlan.DoesNotExist:
+            raise serializers.ValidationError(
+                "Subscription plan does not exist."
+            )
+
+        if not plan.is_active:
+            raise serializers.ValidationError(
+                "Subscription plan is not active."
+            )
+
+        return plan
+
+
+class UpdateUserSubscriptionSerializer(serializers.ModelSerializer):
+    """
+    Serializer used while updating a subscription.
+    """
+    class Meta:
+        model = UserSubscription
+        fields = (
+            "status",
+            "auto_renew",
+        )
+
+
+class UserSubscriptionListSerializer(serializers.ModelSerializer):
+    """
+    Serializer used for listing user subscriptions.
+    """
+    user_email = serializers.EmailField(
+        source="user.email",
+        read_only=True,
+    )
+    plan_name = serializers.CharField(
+        source="plan.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = UserSubscription
+        fields = (
+            "uuid",
+            "user_email",
+            "plan_name",
+            "status",
+            "start_date",
+            "end_date",
+            "auto_renew",
+        )
+
+
+class UserDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for User detail in nested response.
+    """
+    class Meta:
+        model = User
+        fields = (
+            "uuid",
+            "email",
+            "full_name",
+        )
+
+
+class PlanDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for SubscriptionPlan detail in nested response.
+    """
+    class Meta:
+        model = SubscriptionPlan
+        fields = (
+            "uuid",
+            "name",
+            "price",
+            "billing_cycle",
+            "request_limit",
+        )
+
+
+class UserSubscriptionSerializer(serializers.ModelSerializer):
+    """
+    Serializer used for user subscription detail responses.
+    """
+    user = UserDetailSerializer(read_only=True)
+    plan = PlanDetailSerializer(read_only=True)
+
+    class Meta:
+        model = UserSubscription
+        fields = (
+            "uuid",
+            "user",
+            "plan",
+            "status",
+            "auto_renew",
+            "start_date",
+            "end_date",
             "created_at",
             "updated_at",
         )

@@ -4,7 +4,7 @@ from rest_framework.test import APITestCase
 from decimal import Decimal
 
 from apps.accounts.models import User
-from apps.subscriptions.models import SubscriptionPlan
+from apps.subscriptions.models import SubscriptionPlan, UserSubscription
 
 
 class SubscriptionPlanAPITests(APITestCase):
@@ -318,3 +318,233 @@ class SubscriptionPlanAPITests(APITestCase):
         plan2.refresh_from_db()
         self.assertTrue(plan1.is_active)
         self.assertFalse(plan2.is_active)
+
+
+class UserSubscriptionAPITests(APITestCase):
+    """
+    Integration tests for UserSubscription CRUD APIs.
+    """
+
+    def setUp(self):
+        # Create user accounts
+        self.admin_user = User.objects.create_user(
+            email="admin@example.com",
+            password="securepassword123",
+            full_name="Admin User",
+            role=User.Role.ADMIN,
+        )
+        self.dev_user1 = User.objects.create_user(
+            email="dev1@example.com",
+            password="securepassword123",
+            full_name="Developer One",
+            role=User.Role.DEVELOPER,
+        )
+        self.dev_user2 = User.objects.create_user(
+            email="dev2@example.com",
+            password="securepassword123",
+            full_name="Developer Two",
+            role=User.Role.DEVELOPER,
+        )
+
+        # Create subscription plans
+        self.plan_monthly = SubscriptionPlan.objects.create(
+            name="Developer Monthly",
+            description="Monthly developer subscription plan description",
+            price=29.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.MONTHLY,
+            request_limit=10000,
+            is_active=True,
+        )
+        self.plan_yearly = SubscriptionPlan.objects.create(
+            name="Developer Yearly",
+            description="Yearly developer subscription plan description",
+            price=299.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.YEARLY,
+            request_limit=150000,
+            is_active=True,
+        )
+        self.plan_inactive = SubscriptionPlan.objects.create(
+            name="Developer Legacy Plan",
+            description="Legacy developer subscription plan description",
+            price=19.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.MONTHLY,
+            request_limit=5000,
+            is_active=False,
+        )
+
+    def test_purchase_subscription_success(self):
+        self.client.force_authenticate(user=self.dev_user1)
+        url = reverse("user-subscription-list-create")
+
+        # Purchase Monthly Plan
+        response = self.client.post(url, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(UserSubscription.objects.filter(user=self.dev_user1).count(), 1)
+        
+        sub = UserSubscription.objects.get(user=self.dev_user1)
+        self.assertEqual(sub.plan, self.plan_monthly)
+        self.assertEqual(sub.status, UserSubscription.Status.ACTIVE)
+        self.assertTrue(sub.auto_renew)
+        self.assertAlmostEqual(
+            (sub.end_date - sub.start_date).days, 
+            30, 
+            delta=1
+        )
+
+    def test_purchase_subscription_admin_fails(self):
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse("user-subscription-list-create")
+
+        response = self.client.post(url, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["message"], "Only developers can purchase a subscription plan.")
+
+    def test_purchase_subscription_inactive_plan_fails(self):
+        self.client.force_authenticate(user=self.dev_user1)
+        url = reverse("user-subscription-list-create")
+
+        response = self.client.post(url, {
+            "plan": str(self.plan_inactive.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("plan", response.data.get("errors", {}))
+
+    def test_purchase_subscription_already_active_fails(self):
+        self.client.force_authenticate(user=self.dev_user1)
+        url = reverse("user-subscription-list-create")
+
+        # Create active subscription first
+        self.client.post(url, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        # Try to purchase again
+        response = self.client.post(url, {
+            "plan": str(self.plan_yearly.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["message"], "User already has an active subscription.")
+
+    def test_list_subscriptions_admin_only(self):
+        url = reverse("user-subscription-list-create")
+
+        # Non-admin list should fail (403)
+        self.client.force_authenticate(user=self.dev_user1)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Admin list should succeed (200)
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_retrieve_subscription_owner_or_admin(self):
+        # 1. Owner purchases subscription
+        self.client.force_authenticate(user=self.dev_user1)
+        url_create = reverse("user-subscription-list-create")
+        resp_create = self.client.post(url_create, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+        uuid = resp_create.data["data"]["uuid"]
+
+        detail_url = reverse("user-subscription-detail", kwargs={"uuid": uuid})
+
+        # 2. Other user tries to retrieve -> 403 Forbidden
+        self.client.force_authenticate(user=self.dev_user2)
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 3. Owner retrieves -> 200 OK
+        self.client.force_authenticate(user=self.dev_user1)
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["user"]["email"], self.dev_user1.email)
+
+        # 4. Admin retrieves -> 200 OK
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_subscription_admin_only(self):
+        # Create subscription
+        self.client.force_authenticate(user=self.dev_user1)
+        url_create = reverse("user-subscription-list-create")
+        resp_create = self.client.post(url_create, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+        uuid = resp_create.data["data"]["uuid"]
+
+        detail_url = reverse("user-subscription-detail", kwargs={"uuid": uuid})
+
+        # Non-admin update fails
+        self.client.force_authenticate(user=self.dev_user1)
+        response = self.client.patch(detail_url, {"auto_renew": False}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Admin update succeeds
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.patch(detail_url, {
+            "status": "EXPIRED",
+            "auto_renew": False
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["status"], "EXPIRED")
+        self.assertFalse(response.data["data"]["auto_renew"])
+
+    def test_delete_subscription_admin_only(self):
+        # Create subscription
+        self.client.force_authenticate(user=self.dev_user1)
+        url_create = reverse("user-subscription-list-create")
+        resp_create = self.client.post(url_create, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+        uuid = resp_create.data["data"]["uuid"]
+
+        detail_url = reverse("user-subscription-detail", kwargs={"uuid": uuid})
+
+        # Non-admin delete fails
+        self.client.force_authenticate(user=self.dev_user1)
+        response = self.client.delete(detail_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Admin delete succeeds
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.delete(detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+        # Verify soft-delete
+        sub = UserSubscription.objects.get(uuid=uuid)
+        self.assertTrue(sub.is_deleted)
+
+    def test_my_subscriptions(self):
+        self.client.force_authenticate(user=self.dev_user1)
+        url_create = reverse("user-subscription-list-create")
+        url_me = reverse("user-subscription-me")
+
+        # Purchase Monthly Plan
+        self.client.post(url_create, {
+            "plan": str(self.plan_monthly.uuid),
+            "auto_renew": True
+        }, format="json")
+
+        # Retrieve `/me/`
+        response = self.client.get(url_me)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["data"]), 1)
+        self.assertEqual(response.data["data"][0]["plan_name"], "Developer Monthly")

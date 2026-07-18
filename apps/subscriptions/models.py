@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from apps.accounts.models import User
 from apps.core.models.base import BaseModel
 
 
@@ -66,3 +67,50 @@ class SubscriptionPlan(BaseModel):
                     qs = qs.exclude(pk=self.pk)
                 qs.update(is_active=False)
         super().save(*args, **kwargs)
+
+
+
+class UserSubscription(BaseModel):
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        EXPIRED = "EXPIRED", "Expired"
+        CANCELLED = "CANCELLED", "Cancelled"
+        PENDING = "PENDING", "Pending"
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        unique=True,
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="subscriptions",
+    )
+
+    plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.PROTECT,
+        related_name="subscriptions",
+    )
+
+    start_date = models.DateTimeField()
+
+    end_date = models.DateTimeField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+
+    auto_renew = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "user_subscriptions"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.plan.name} ({self.status})"
