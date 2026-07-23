@@ -60,6 +60,10 @@ urlpatterns = [
 
     # API Keys APIs
     path("api/v1/", include("apps.api_keys.urls")),
+
+    # Usage Logs APIs
+    path("api/v1/", include("apps.usage_logs.urls")),
 ]
+
 
 

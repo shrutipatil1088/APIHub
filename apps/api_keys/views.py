@@ -1,3 +1,4 @@
+import time
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -12,6 +13,7 @@ from drf_spectacular.utils import (
 from apps.accounts.models import User
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.responses import success_response
+from apps.usage_logs.services import UsageLogService
 
 from .authentication import APIKeyAuthentication
 from .serializers import (
@@ -296,6 +298,8 @@ class ProtectedSampleAPIView(APIView):
         summary="Protected sample endpoint using API Key authentication.",
     )
     def get(self, request):
+        start_time = time.perf_counter()
+
         developer = request.user
         api_key = request.auth
 
@@ -309,8 +313,17 @@ class ProtectedSampleAPIView(APIView):
 
         serializer = ProtectedSampleResponseSerializer(data)
 
-        return success_response(
+        response = success_response(
             data=serializer.data,
             message="API Key authentication successful.",
         )
+
+        # Automatically record UsageLog entry using UsageLogService
+        UsageLogService.log_request(
+            request=request,
+            response=response,
+            start_time=start_time,
+        )
+
+        return response
 

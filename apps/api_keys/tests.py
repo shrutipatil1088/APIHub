@@ -377,6 +377,8 @@ class APIKeyAPITests(APITestCase):
         self.assertIn("Subscription is not active", str(ctx.exception))
 
     def test_protected_sample_endpoint_api_key_auth(self):
+        from apps.usage_logs.models import UsageLog
+
         # 1. Create an API Key for dev_user1
         self.client.force_authenticate(user=self.dev_user1)
         create_url = reverse("api-key-list-create")
@@ -389,6 +391,7 @@ class APIKeyAPITests(APITestCase):
             format="json",
         )
         plain_key = res.data["data"]["api_key"]
+        key_uuid = res.data["data"]["key"]["uuid"]
 
         # Clear authentication
         self.client.logout()
@@ -399,8 +402,15 @@ class APIKeyAPITests(APITestCase):
         res_unauth = self.client.get(protected_url)
         self.assertEqual(res_unauth.status_code, status.HTTP_401_UNAUTHORIZED)
 
+        initial_log_count = UsageLog.objects.count()
+
         # 3. Authenticated request using X-API-Key header should succeed
-        res_auth = self.client.get(protected_url, HTTP_X_API_KEY=plain_key)
+        res_auth = self.client.get(
+            protected_url,
+            HTTP_X_API_KEY=plain_key,
+            HTTP_USER_AGENT="TestClient/1.0",
+            HTTP_X_FORWARDED_FOR="203.0.113.195, 198.51.100.10",
+        )
         self.assertEqual(res_auth.status_code, status.HTTP_200_OK)
         self.assertTrue(res_auth.data["success"])
 
@@ -409,4 +419,25 @@ class APIKeyAPITests(APITestCase):
         self.assertEqual(data["developer_uuid"], str(self.dev_user1.uuid))
         self.assertEqual(data["project_name"], self.project1.name)
         self.assertEqual(data["project_uuid"], str(self.project1.uuid))
-        self.assertIn("api_key_uuid", data)
+        self.assertEqual(data["api_key_uuid"], key_uuid)
+
+        # 4. Verify automatic UsageLog creation
+        self.assertEqual(UsageLog.objects.count(), initial_log_count + 1)
+        latest_log = UsageLog.objects.order_by("-created_at").first()
+
+        self.assertEqual(latest_log.project.uuid, self.project1.uuid)
+        self.assertEqual(str(latest_log.api_key.uuid), key_uuid)
+        self.assertEqual(latest_log.endpoint, "/api/v1/api-keys/protected-sample/")
+        self.assertEqual(latest_log.method, "GET")
+        self.assertEqual(latest_log.status_code, 200)
+        self.assertGreaterEqual(latest_log.response_time_ms, 0)
+        self.assertEqual(latest_log.ip_address, "203.0.113.195")
+        self.assertEqual(latest_log.user_agent, "TestClient/1.0")
+
+        # 5. Verify log appears in GET /api/v1/usage-logs/
+        self.client.force_authenticate(user=self.dev_user1)
+        usage_logs_url = reverse("usage-log-list")
+        res_list = self.client.get(usage_logs_url)
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        listed_uuids = [item["uuid"] for item in res_list.data["data"]]
+        self.assertIn(str(latest_log.uuid), listed_uuids)
