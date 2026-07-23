@@ -319,3 +319,94 @@ class APIKeyAPITests(APITestCase):
         regen_response = self.client.post(regen_url)
 
         self.assertEqual(regen_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_authenticate_key_validation(self):
+        from rest_framework.exceptions import AuthenticationFailed
+        from apps.api_keys.services import APIKeyService
+
+        self.client.force_authenticate(user=self.dev_user1)
+        create_url = reverse("api-key-list-create")
+        res = self.client.post(
+            create_url,
+            {
+                "name": "Auth Key Test",
+                "project": str(self.project1.uuid),
+            },
+            format="json",
+        )
+        plain_key = res.data["data"]["api_key"]
+        key_uuid = res.data["data"]["key"]["uuid"]
+
+        # 1. Valid authentication succeeds and updates last_used_at
+        user, key_obj = APIKeyService.authenticate_key(plain_key)
+        self.assertEqual(user, self.dev_user1)
+        self.assertIsNotNone(key_obj.last_used_at)
+
+        # 2. Invalid key raises AuthenticationFailed
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            APIKeyService.authenticate_key("pk_live_invalidkey")
+        self.assertIn("Invalid API Key", str(ctx.exception))
+
+        # 3. Inactive key raises AuthenticationFailed
+        key_obj.is_active = False
+        key_obj.save()
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            APIKeyService.authenticate_key(plain_key)
+        self.assertIn("API Key is inactive", str(ctx.exception))
+
+        # Reset active status
+        key_obj.is_active = True
+        key_obj.save()
+
+        # 4. Expired key raises AuthenticationFailed (401)
+        key_obj.expires_at = timezone.now() - timezone.timedelta(days=1)
+        key_obj.save()
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            APIKeyService.authenticate_key(plain_key)
+        self.assertIn("API Key expired", str(ctx.exception))
+
+        # Reset expires_at
+        key_obj.expires_at = timezone.now() + timezone.timedelta(days=30)
+        key_obj.save()
+
+        # 5. Cancelled subscription raises AuthenticationFailed (401)
+        self.subscription1.status = UserSubscription.Status.CANCELLED
+        self.subscription1.save()
+        with self.assertRaises(AuthenticationFailed) as ctx:
+            APIKeyService.authenticate_key(plain_key)
+        self.assertIn("Subscription is not active", str(ctx.exception))
+
+    def test_protected_sample_endpoint_api_key_auth(self):
+        # 1. Create an API Key for dev_user1
+        self.client.force_authenticate(user=self.dev_user1)
+        create_url = reverse("api-key-list-create")
+        res = self.client.post(
+            create_url,
+            {
+                "name": "Sample Key",
+                "project": str(self.project1.uuid),
+            },
+            format="json",
+        )
+        plain_key = res.data["data"]["api_key"]
+
+        # Clear authentication
+        self.client.logout()
+
+        protected_url = reverse("api-key-protected-sample")
+
+        # 2. Unauthenticated request should fail (401)
+        res_unauth = self.client.get(protected_url)
+        self.assertEqual(res_unauth.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # 3. Authenticated request using X-API-Key header should succeed
+        res_auth = self.client.get(protected_url, HTTP_X_API_KEY=plain_key)
+        self.assertEqual(res_auth.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_auth.data["success"])
+
+        data = res_auth.data["data"]
+        self.assertEqual(data["developer_email"], self.dev_user1.email)
+        self.assertEqual(data["developer_uuid"], str(self.dev_user1.uuid))
+        self.assertEqual(data["project_name"], self.project1.name)
+        self.assertEqual(data["project_uuid"], str(self.project1.uuid))
+        self.assertIn("api_key_uuid", data)

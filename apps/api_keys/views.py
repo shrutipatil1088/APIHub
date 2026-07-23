@@ -13,10 +13,12 @@ from apps.accounts.models import User
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.responses import success_response
 
+from .authentication import APIKeyAuthentication
 from .serializers import (
     APIKeyBaseSerializer,
     APIKeySerializer,
     APIKeyUpdateSerializer,
+    ProtectedSampleResponseSerializer,
 )
 from .services import APIKeyService
 
@@ -267,3 +269,48 @@ class APIKeyRegenerateAPIView(APIView):
             },
             message="API key regenerated successfully.",
         )
+
+
+# ============================================================================
+# Protected Sample Endpoint
+# Handles:
+# GET -> Sample protected endpoint authenticated exclusively using APIKeyAuthentication
+# ============================================================================
+class ProtectedSampleAPIView(APIView):
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    # Swagger documentation for Protected Sample endpoint.
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="X-API-Key",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Developer API Key",
+            ),
+        ],
+        responses={200: ProtectedSampleResponseSerializer},
+        tags=["API Keys"],
+        summary="Protected sample endpoint using API Key authentication.",
+    )
+    def get(self, request):
+        developer = request.user
+        api_key = request.auth
+
+        data = {
+            "developer_uuid": developer.uuid,
+            "developer_email": developer.email,
+            "api_key_uuid": api_key.uuid,
+            "project_uuid": api_key.project.uuid,
+            "project_name": api_key.project.name,
+        }
+
+        serializer = ProtectedSampleResponseSerializer(data)
+
+        return success_response(
+            data=serializer.data,
+            message="API Key authentication successful.",
+        )
+

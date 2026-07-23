@@ -159,3 +159,16 @@ class APIKeyUpdateSerializer(serializers.ModelSerializer):
                 )
 
         return value
+
+
+class ProtectedSampleResponseSerializer(serializers.Serializer):
+    """
+    Serializer for the protected sample API endpoint response.
+    """
+
+    developer_uuid = serializers.UUIDField()
+    developer_email = serializers.EmailField()
+    api_key_uuid = serializers.UUIDField()
+    project_uuid = serializers.UUIDField()
+    project_name = serializers.CharField()
+

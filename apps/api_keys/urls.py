@@ -4,6 +4,7 @@ from .views import (
     APIKeyListCreateAPIView,
     APIKeyDetailAPIView,
     APIKeyRegenerateAPIView,
+    ProtectedSampleAPIView,
 )
 
 urlpatterns = [
@@ -12,6 +13,13 @@ urlpatterns = [
         "api-keys/",
         APIKeyListCreateAPIView.as_view(),
         name="api-key-list-create",
+    ),
+
+    # Protected sample endpoint using API Key authentication.
+    path(
+        "api-keys/protected-sample/",
+        ProtectedSampleAPIView.as_view(),
+        name="api-key-protected-sample",
     ),
 
     # Retrieve, rename, or deactivate a specific API key by UUID.
