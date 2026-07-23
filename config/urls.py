@@ -57,5 +57,9 @@ urlpatterns = [
 
     # Developer Projects APIs
     path("api/v1/", include("apps.developer_projects.urls")),
+
+    # API Keys APIs
+    path("api/v1/", include("apps.api_keys.urls")),
 ]
+
 
