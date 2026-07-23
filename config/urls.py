@@ -54,5 +54,8 @@ urlpatterns = [
 
     # Subscriptions and Plans APIs
     path("api/v1/", include("apps.subscriptions.urls")),
+
+    # Developer Projects APIs
+    path("api/v1/", include("apps.developer_projects.urls")),
 ]
 
