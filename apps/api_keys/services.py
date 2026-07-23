@@ -183,6 +183,7 @@ class APIKeyService:
     @staticmethod
     def authenticate_key(plain_key):
         from rest_framework.exceptions import AuthenticationFailed
+        from apps.subscriptions.services import SubscriptionValidationService
 
         if not plain_key or not isinstance(plain_key, str):
             raise AuthenticationFailed("Invalid API Key.")
@@ -191,7 +192,12 @@ class APIKeyService:
 
         key = (
             APIKey.objects
-            .select_related("project", "subscription", "project__developer")
+            .select_related(
+                "project",
+                "subscription",
+                "subscription__plan",
+                "project__developer",
+            )
             .filter(
                 key_hash=key_hash,
                 is_deleted=False,
@@ -205,17 +211,11 @@ class APIKeyService:
         if not key.is_active:
             raise AuthenticationFailed("API Key is inactive.")
 
-        now = timezone.now()
-
-        # Check key and subscription expiry
-        if (key.expires_at and key.expires_at <= now) or (key.subscription.end_date and key.subscription.end_date <= now):
-            raise AuthenticationFailed("API Key expired.")
-
-        # Check subscription status and deletion
-        if key.subscription.is_deleted or key.subscription.status != UserSubscription.Status.ACTIVE:
-            raise AuthenticationFailed("Subscription is not active.")
+        # Validate subscription status & monthly usage limit via SubscriptionValidationService
+        SubscriptionValidationService.validate(key)
 
         # Update last_used_at timestamp
+        now = timezone.now()
         key.last_used_at = now
         key.save(update_fields=["last_used_at", "updated_at"])
 

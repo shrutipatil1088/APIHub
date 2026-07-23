@@ -548,3 +548,137 @@ class UserSubscriptionAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["data"]), 1)
         self.assertEqual(response.data["data"][0]["plan_name"], "Developer Monthly")
+
+
+class SubscriptionValidationServiceTests(APITestCase):
+    """
+    Unit and integration tests for SubscriptionValidationService.
+    """
+
+    def setUp(self):
+        import hashlib
+        from django.utils import timezone
+        from apps.developer_projects.models import DeveloperProject
+        from apps.api_keys.models import APIKey
+        from apps.usage_logs.models import UsageLog
+
+        self.developer = User.objects.create_user(
+            email="val_dev@example.com",
+            password="password123",
+            full_name="Validation Developer",
+            role=User.Role.DEVELOPER,
+        )
+
+        self.plan_limited = SubscriptionPlan.objects.create(
+            name="Limited Plan",
+            description="Limited plan description with 2 requests limit.",
+            price=9.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.MONTHLY,
+            request_limit=2,
+            is_active=True,
+        )
+
+        self.plan_enterprise = SubscriptionPlan.objects.create(
+            name="Enterprise Unlimited Plan",
+            description="Unlimited enterprise plan description with zero request limit.",
+            price=499.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.YEARLY,
+            request_limit=0,
+            is_active=True,
+        )
+
+        self.subscription_active = UserSubscription.objects.create(
+            user=self.developer,
+            plan=self.plan_limited,
+            start_date=timezone.now() - timezone.timedelta(days=1),
+            end_date=timezone.now() + timezone.timedelta(days=29),
+            status=UserSubscription.Status.ACTIVE,
+        )
+
+        self.project = DeveloperProject.objects.create(
+            developer=self.developer,
+            name="Validation Test Project",
+            description="Project created for testing subscription validations.",
+        )
+
+        self.api_key = APIKey.objects.create(
+            project=self.project,
+            subscription=self.subscription_active,
+            name="Test Validation Key",
+            key_hash=hashlib.sha256(b"val_key_secret").hexdigest(),
+            expires_at=self.subscription_active.end_date,
+            is_active=True,
+        )
+
+    def test_validate_active_subscription_success(self):
+        from apps.subscriptions.services import SubscriptionValidationService
+        self.assertTrue(SubscriptionValidationService.validate_subscription(self.api_key))
+
+    def test_validate_expired_subscription_fails(self):
+        from django.utils import timezone
+        from rest_framework.exceptions import PermissionDenied
+        from apps.subscriptions.services import SubscriptionValidationService
+
+        self.subscription_active.status = UserSubscription.Status.EXPIRED
+        self.subscription_active.save()
+
+        with self.assertRaises(PermissionDenied) as ctx:
+            SubscriptionValidationService.validate_subscription(self.api_key)
+        self.assertIn("Subscription has expired.", str(ctx.exception))
+
+    def test_validate_cancelled_subscription_fails(self):
+        from rest_framework.exceptions import PermissionDenied
+        from apps.subscriptions.services import SubscriptionValidationService
+
+        self.subscription_active.status = UserSubscription.Status.CANCELLED
+        self.subscription_active.save()
+
+        with self.assertRaises(PermissionDenied) as ctx:
+            SubscriptionValidationService.validate_subscription(self.api_key)
+        self.assertIn("Subscription has been cancelled.", str(ctx.exception))
+
+    def test_validate_usage_limit_success_and_exceeded(self):
+        from apps.subscriptions.services import SubscriptionValidationService
+        from apps.subscriptions.exceptions import UsageLimitExceeded
+        from apps.usage_logs.models import UsageLog
+
+        # 0 requests -> Under limit (2)
+        self.assertTrue(SubscriptionValidationService.validate_usage_limit(self.api_key))
+
+        # Create 2 usage log records
+        for i in range(2):
+            UsageLog.objects.create(
+                project=self.project,
+                api_key=self.api_key,
+                endpoint="/api/v1/test",
+                method="GET",
+                status_code=200,
+                response_time_ms=50,
+            )
+
+        # 2 requests -> Limit exceeded
+        with self.assertRaises(UsageLimitExceeded) as ctx:
+            SubscriptionValidationService.validate_usage_limit(self.api_key)
+        self.assertIn("Monthly API request limit exceeded.", str(ctx.exception))
+
+    def test_enterprise_unlimited_plan_bypasses_limit(self):
+        from apps.subscriptions.services import SubscriptionValidationService
+        from apps.usage_logs.models import UsageLog
+
+        self.subscription_active.plan = self.plan_enterprise
+        self.subscription_active.save()
+
+        # Create 10 usage log records
+        for i in range(10):
+            UsageLog.objects.create(
+                project=self.project,
+                api_key=self.api_key,
+                endpoint="/api/v1/test",
+                method="GET",
+                status_code=200,
+                response_time_ms=50,
+            )
+
+        # Unlimited plan should pass
+        self.assertTrue(SubscriptionValidationService.validate_usage_limit(self.api_key))
+

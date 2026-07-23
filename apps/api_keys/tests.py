@@ -2,6 +2,7 @@ import hashlib
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied, AuthenticationFailed
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
@@ -358,23 +359,23 @@ class APIKeyAPITests(APITestCase):
         key_obj.is_active = True
         key_obj.save()
 
-        # 4. Expired key raises AuthenticationFailed (401)
+        # 4. Expired key/subscription raises PermissionDenied (403)
         key_obj.expires_at = timezone.now() - timezone.timedelta(days=1)
         key_obj.save()
-        with self.assertRaises(AuthenticationFailed) as ctx:
+        with self.assertRaises(PermissionDenied) as ctx:
             APIKeyService.authenticate_key(plain_key)
-        self.assertIn("API Key expired", str(ctx.exception))
+        self.assertIn("Subscription has expired", str(ctx.exception))
 
         # Reset expires_at
         key_obj.expires_at = timezone.now() + timezone.timedelta(days=30)
         key_obj.save()
 
-        # 5. Cancelled subscription raises AuthenticationFailed (401)
+        # 5. Cancelled subscription raises PermissionDenied (403)
         self.subscription1.status = UserSubscription.Status.CANCELLED
         self.subscription1.save()
-        with self.assertRaises(AuthenticationFailed) as ctx:
+        with self.assertRaises(PermissionDenied) as ctx:
             APIKeyService.authenticate_key(plain_key)
-        self.assertIn("Subscription is not active", str(ctx.exception))
+        self.assertIn("Subscription has been cancelled", str(ctx.exception))
 
     def test_protected_sample_endpoint_api_key_auth(self):
         from apps.usage_logs.models import UsageLog
@@ -441,3 +442,53 @@ class APIKeyAPITests(APITestCase):
         self.assertEqual(res_list.status_code, status.HTTP_200_OK)
         listed_uuids = [item["uuid"] for item in res_list.data["data"]]
         self.assertIn(str(latest_log.uuid), listed_uuids)
+
+    def test_protected_endpoint_cancelled_subscription_returns_403(self):
+        self.client.force_authenticate(user=self.dev_user1)
+        res = self.client.post(
+            reverse("api-key-list-create"),
+            {"name": "Cancelled Test Key", "project": str(self.project1.uuid)},
+            format="json",
+        )
+        plain_key = res.data["data"]["api_key"]
+        self.client.logout()
+
+        # Cancel subscription
+        self.subscription1.status = UserSubscription.Status.CANCELLED
+        self.subscription1.save()
+
+        protected_url = reverse("api-key-protected-sample")
+        res_auth = self.client.get(protected_url, HTTP_X_API_KEY=plain_key)
+
+        self.assertEqual(res_auth.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(res_auth.data["success"])
+        self.assertEqual(res_auth.data["message"], "Subscription has been cancelled.")
+
+    def test_protected_endpoint_exceeded_usage_limit_returns_429(self):
+        from apps.usage_logs.models import UsageLog
+
+        # Set plan limit to 1
+        self.plan.request_limit = 1
+        self.plan.save()
+
+        self.client.force_authenticate(user=self.dev_user1)
+        res = self.client.post(
+            reverse("api-key-list-create"),
+            {"name": "Limit Test Key", "project": str(self.project1.uuid)},
+            format="json",
+        )
+        plain_key = res.data["data"]["api_key"]
+        key_uuid = res.data["data"]["key"]["uuid"]
+        self.client.logout()
+
+        protected_url = reverse("api-key-protected-sample")
+
+        # First call succeeds (1 request)
+        res1 = self.client.get(protected_url, HTTP_X_API_KEY=plain_key)
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+
+        # Second call fails with 429 (limit exceeded)
+        res2 = self.client.get(protected_url, HTTP_X_API_KEY=plain_key)
+        self.assertEqual(res2.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertFalse(res2.data["success"])
+        self.assertEqual(res2.data["message"], "Monthly API request limit exceeded.")

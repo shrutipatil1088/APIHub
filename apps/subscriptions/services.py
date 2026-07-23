@@ -1,9 +1,10 @@
 from datetime import timedelta
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.accounts.models import User
+from .exceptions import UsageLimitExceeded
 from .models import SubscriptionPlan, UserSubscription
 from .filters import (
     SubscriptionPlanFilter,
@@ -216,3 +217,87 @@ class UserSubscriptionService:
             .select_related("user", "plan")
             .order_by("-created_at")
         )
+
+
+class SubscriptionValidationService:
+    """
+    Contains validation logic for API Key Subscriptions and Usage Limits.
+    """
+
+    @staticmethod
+    def validate_subscription(api_key):
+        """
+        Validates that the API key belongs to an active project and has an active, unexpired subscription.
+        """
+        # 1. Check DeveloperProject status
+        if not api_key.project or api_key.project.is_deleted or not api_key.project.is_active:
+            raise PermissionDenied("Developer project is inactive.")
+
+        subscription = api_key.subscription
+
+        # 2. Check UserSubscription presence and deletion
+        if not subscription or subscription.is_deleted:
+            raise PermissionDenied("Subscription is not active.")
+
+        # 3. Check subscription status & expiry
+        now = timezone.now()
+
+        if (
+            (api_key.expires_at and api_key.expires_at <= now)
+            or (subscription.end_date and subscription.end_date <= now)
+            or subscription.status == UserSubscription.Status.EXPIRED
+        ):
+            raise PermissionDenied("Subscription has expired.")
+
+        if subscription.status == UserSubscription.Status.CANCELLED:
+            raise PermissionDenied("Subscription has been cancelled.")
+
+        if subscription.status != UserSubscription.Status.ACTIVE:
+            raise PermissionDenied("Subscription is not active.")
+
+        return True
+
+    @staticmethod
+    def validate_usage_limit(api_key):
+        """
+        Validates that the API key's current month usage does not exceed its subscription plan limit.
+        """
+        subscription = api_key.subscription
+        if not subscription or not subscription.plan:
+            return True
+
+        plan = subscription.plan
+
+        # Bypass limit validation for Unlimited / Enterprise plans
+        if (
+            plan.request_limit == 0
+            or "enterprise" in plan.name.lower()
+            or "unlimited" in plan.name.lower()
+        ):
+            return True
+
+        # Calculate current month request count from UsageLog
+        now = timezone.now()
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        from apps.usage_logs.models import UsageLog
+
+        current_requests = UsageLog.objects.filter(
+            api_key=api_key,
+            is_deleted=False,
+            requested_at__gte=start_of_month,
+        ).count()
+
+        if current_requests >= plan.request_limit:
+            raise UsageLimitExceeded("Monthly API request limit exceeded.")
+
+        return True
+
+    @staticmethod
+    def validate(api_key):
+        """
+        Performs full subscription and usage limit validation for an authenticated API key.
+        """
+        SubscriptionValidationService.validate_subscription(api_key)
+        SubscriptionValidationService.validate_usage_limit(api_key)
+        return True
