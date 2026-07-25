@@ -250,7 +250,17 @@ SPECTACULAR_SETTINGS = {
             "name": "Usage Logs",
             "description": "API Usage log querying and history endpoints.",
         },
+        {
+            "name": "Dashboard",
+            "description": "Analytics dashboard endpoints for admins and developers.",
+        },
     ],
+
+    # Explicit Enum names to resolve naming collisions for status fields
+    "ENUM_NAME_OVERRIDES": {
+        "APIStatusEnum": "apps.api_catalog.models.API.Status",
+        "UserSubscriptionStatusEnum": "apps.subscriptions.models.UserSubscription.Status",
+    },
 }
 
 

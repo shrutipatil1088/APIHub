@@ -5,7 +5,7 @@ from apps.api_keys.models import APIKey
 from .models import UsageLog
 
 
-class ProjectDetailSerializer(serializers.ModelSerializer):
+class UsageLogProjectDetailSerializer(serializers.ModelSerializer):
     """
     Serializer for nested project details in UsageLog responses.
     """
@@ -18,7 +18,7 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
         )
 
 
-class APIKeyDetailSerializer(serializers.ModelSerializer):
+class UsageLogAPIKeyDetailSerializer(serializers.ModelSerializer):
     """
     Serializer for nested APIKey details in UsageLog responses.
     """
@@ -36,8 +36,8 @@ class UsageLogSerializer(serializers.ModelSerializer):
     Response serializer for UsageLog details.
     """
 
-    project = ProjectDetailSerializer(read_only=True)
-    api_key = APIKeyDetailSerializer(read_only=True)
+    project = UsageLogProjectDetailSerializer(read_only=True)
+    api_key = UsageLogAPIKeyDetailSerializer(read_only=True)
 
     class Meta:
         model = UsageLog

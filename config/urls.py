@@ -63,7 +63,11 @@ urlpatterns = [
 
     # Usage Logs APIs
     path("api/v1/", include("apps.usage_logs.urls")),
+
+    # Dashboard APIs
+    path("api/v1/", include("apps.dashboard.urls")),
 ]
+
 
 
 

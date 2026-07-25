@@ -1,5 +1,6 @@
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 
 from .services import APIKeyService
 
@@ -26,3 +27,20 @@ class APIKeyAuthentication(BaseAuthentication):
 
     def authenticate_header(self, request):
         return 'Api-Key realm="api"'
+
+
+class APIKeyAuthenticationScheme(OpenApiAuthenticationExtension):
+    """
+    OpenAPI authentication extension for OpenAPI schema generation in Swagger UI.
+    """
+
+    target_class = "apps.api_keys.authentication.APIKeyAuthentication"
+    name = "APIKeyAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "Developer API Key for authenticating API requests.",
+        }
