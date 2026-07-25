@@ -36,7 +36,6 @@ from .services import SubscriptionPlanService, UserSubscriptionService
 # ============================================================================
 class SubscriptionPlanListCreateAPIView(APIView):
 
-    # Assign permissions based on request method.
     def get_permissions(self):
         if self.request.method == "POST":
             return [
@@ -50,12 +49,25 @@ class SubscriptionPlanListCreateAPIView(APIView):
 
     # Swagger documentation for List Subscription Plans.
     @extend_schema(
+        summary="List Subscription Plans",
+        description="""
+Returns a paginated list of all subscription plans offered to developers.
+
+Permissions:
+- Authenticated Users
+
+Supports:
+- Search (by plan name)
+- Filtering (by billing_cycle, is_active)
+- Ordering (by name, price, created_at, updated_at)
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="billing_cycle",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="Filter plans by billing cycle.",
+                description="Filter plans by billing cycle (MONTHLY, YEARLY).",
                 enum=SubscriptionPlan.BillingCycle.values,
             ),
             OpenApiParameter(
@@ -74,11 +86,7 @@ class SubscriptionPlanListCreateAPIView(APIView):
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description=(
-                    "Order results. "
-                    "Available values: "
-                    "name, -name, price, -price, created_at, -created_at, updated_at, -updated_at."
-                ),
+                description="Order results by field (e.g., price, -price, name).",
             ),
             OpenApiParameter(
                 name="page",
@@ -95,56 +103,35 @@ class SubscriptionPlanListCreateAPIView(APIView):
         ],
         responses={200: SubscriptionPlanListSerializer(many=True)},
         tags=["Subscription Plans"],
-        summary="List all subscription plans.",
     )
     def get(self, request):
-        # Get filtered/search/ordered queryset.
-        plans = SubscriptionPlanService.list_plans(
-            request.query_params,
-        )
-
-        # Apply pagination.
+        plans = SubscriptionPlanService.list_plans(request.query_params)
         paginator = StandardResultsSetPagination()
-
-        page = paginator.paginate_queryset(
-            plans,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = SubscriptionPlanListSerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
+        page = paginator.paginate_queryset(plans, request)
+        serializer = SubscriptionPlanListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     # Swagger documentation for Create Subscription Plan.
     @extend_schema(
+        summary="Create Subscription Plan",
+        description="""
+Creates a new subscription plan for developers.
+
+Permissions:
+- Admin Users only
+
+Validation rules:
+- Unique plan name required.
+- Non-negative price and valid request limit.
+""",
         request=CreateSubscriptionPlanSerializer,
         responses={201: SubscriptionPlanSerializer},
         tags=["Subscription Plans"],
-        summary="Create a new subscription plan.",
     )
     def post(self, request):
-        # Validate request data.
-        serializer = CreateSubscriptionPlanSerializer(
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        # Create new subscription plan.
-        plan = SubscriptionPlanService.create_plan(
-            serializer.validated_data,
-        )
-
-        # Return created object.
+        serializer = CreateSubscriptionPlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        plan = SubscriptionPlanService.create_plan(serializer.validated_data)
         return success_response(
             data=SubscriptionPlanSerializer(plan).data,
             message="Subscription plan created successfully.",
@@ -162,13 +149,8 @@ class SubscriptionPlanListCreateAPIView(APIView):
 # ============================================================================
 class SubscriptionPlanDetailAPIView(APIView):
 
-    # Assign permissions based on request method.
     def get_permissions(self):
-        if self.request.method in (
-            "PUT",
-            "PATCH",
-            "DELETE",
-        ):
+        if self.request.method in ("PUT", "PATCH", "DELETE"):
             return [
                 IsAuthenticated(),
                 IsAdminRole(),
@@ -178,82 +160,67 @@ class SubscriptionPlanDetailAPIView(APIView):
             IsAuthenticated(),
         ]
 
-    # Swagger documentation for Retrieve Subscription Plan.
+    # Swagger documentation for Retrieve Subscription Plan Details.
     @extend_schema(
+        summary="Retrieve Subscription Plan Details",
+        description="""
+Retrieves details for a specific subscription plan by UUID.
+
+Permissions:
+- Authenticated Users
+""",
         responses={200: SubscriptionPlanSerializer},
         tags=["Subscription Plans"],
-        summary="Retrieve a subscription plan details.",
     )
     def get(self, request, uuid):
-        # Fetch plan by UUID.
         plan = SubscriptionPlanService.get_plan(uuid)
-
-        # Convert model into JSON.
         serializer = SubscriptionPlanSerializer(plan)
-
         return success_response(
             data=serializer.data,
             message="Subscription plan fetched successfully.",
         )
 
-    # Swagger documentation for Full Update.
+    # Swagger documentation for Fully Update Subscription Plan.
     @extend_schema(
+        summary="Fully Update Subscription Plan",
+        description="""
+Fully updates all fields of a subscription plan by UUID.
+
+Permissions:
+- Admin Users only
+""",
         request=UpdateSubscriptionPlanSerializer,
         responses={200: SubscriptionPlanSerializer},
         tags=["Subscription Plans"],
-        summary="Fully update a subscription plan.",
     )
     def put(self, request, uuid):
-        # Fetch existing plan.
         plan = SubscriptionPlanService.get_plan(uuid)
-
-        # Validate complete request data.
-        serializer = UpdateSubscriptionPlanSerializer(
-            plan,
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        plan = SubscriptionPlanService.update_plan(
-            plan,
-            serializer.validated_data,
-        )
-
+        serializer = UpdateSubscriptionPlanSerializer(plan, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        plan = SubscriptionPlanService.update_plan(plan, serializer.validated_data)
         return success_response(
             data=SubscriptionPlanSerializer(plan).data,
             message="Subscription plan updated successfully.",
         )
 
-    # Swagger documentation for Partial Update.
+    # Swagger documentation for Partially Update Subscription Plan.
     @extend_schema(
+        summary="Partially Update Subscription Plan",
+        description="""
+Partially updates specific fields of a subscription plan by UUID.
+
+Permissions:
+- Admin Users only
+""",
         request=UpdateSubscriptionPlanSerializer,
         responses={200: SubscriptionPlanSerializer},
         tags=["Subscription Plans"],
-        summary="Partially update a subscription plan.",
     )
     def patch(self, request, uuid):
-        # Fetch existing plan.
         plan = SubscriptionPlanService.get_plan(uuid)
-
-        # Validate only provided fields.
-        serializer = UpdateSubscriptionPlanSerializer(
-            plan,
-            data=request.data,
-            partial=True,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        plan = SubscriptionPlanService.update_plan(
-            plan,
-            serializer.validated_data,
-        )
-
+        serializer = UpdateSubscriptionPlanSerializer(plan, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        plan = SubscriptionPlanService.update_plan(plan, serializer.validated_data)
         return success_response(
             data=SubscriptionPlanSerializer(plan).data,
             message="Subscription plan updated successfully.",
@@ -261,30 +228,30 @@ class SubscriptionPlanDetailAPIView(APIView):
 
     # Swagger documentation for Delete Subscription Plan.
     @extend_schema(
+        summary="Delete Subscription Plan",
+        description="""
+Soft-deletes a subscription plan by UUID.
+
+Permissions:
+- Admin Users only
+""",
         responses={200: None},
         tags=["Subscription Plans"],
-        summary="Delete a subscription plan.",
     )
     def delete(self, request, uuid):
-        # Fetch existing plan.
         plan = SubscriptionPlanService.get_plan(uuid)
-
         SubscriptionPlanService.delete_plan(plan)
-
-        return success_response(
-            message="Subscription plan deleted successfully.",
-        )
+        return success_response(message="Subscription plan deleted successfully.")
 
 
 # ============================================================================
 # UserSubscription List & Create
 # Handles:
 # GET  -> List all subscriptions (Admin only)
-# POST -> Purchase a new subscription (Authenticated)
+# POST -> Purchase a new subscription (Developer only)
 # ============================================================================
 class UserSubscriptionListCreateAPIView(APIView):
 
-    # Assign permissions based on request method.
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsAuthenticated()]
@@ -292,12 +259,25 @@ class UserSubscriptionListCreateAPIView(APIView):
 
     # Swagger documentation for List User Subscriptions.
     @extend_schema(
+        summary="List User Subscriptions",
+        description="""
+Returns a paginated list of all developer user subscriptions across the platform.
+
+Permissions:
+- Admin Users only
+
+Supports:
+- Search (by user email, plan name)
+- Filtering (by status, auto_renew)
+- Ordering (by created_at, start_date, end_date)
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="status",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description="Filter by subscription status.",
+                description="Filter by subscription status (ACTIVE, EXPIRED, CANCELLED, PENDING).",
                 enum=UserSubscription.Status.values,
             ),
             OpenApiParameter(
@@ -316,11 +296,7 @@ class UserSubscriptionListCreateAPIView(APIView):
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description=(
-                    "Order results. "
-                    "Available values: "
-                    "created_at, -created_at, updated_at, -updated_at, start_date, -start_date, end_date, -end_date."
-                ),
+                description="Order results by field (e.g., created_at, -created_at).",
             ),
             OpenApiParameter(
                 name="page",
@@ -337,57 +313,38 @@ class UserSubscriptionListCreateAPIView(APIView):
         ],
         responses={200: UserSubscriptionListSerializer(many=True)},
         tags=["User Subscriptions"],
-        summary="List all user subscriptions (Admin only).",
     )
     def get(self, request):
-        # Get filtered/search/ordered queryset.
-        subscriptions = UserSubscriptionService.list_subscriptions(
-            request.query_params,
-        )
-
-        # Apply pagination.
+        subscriptions = UserSubscriptionService.list_subscriptions(request.query_params)
         paginator = StandardResultsSetPagination()
-
-        page = paginator.paginate_queryset(
-            subscriptions,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = UserSubscriptionListSerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
+        page = paginator.paginate_queryset(subscriptions, request)
+        serializer = UserSubscriptionListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     # Swagger documentation for Purchase Subscription.
     @extend_schema(
+        summary="Purchase Subscription",
+        description="""
+Purchases a subscription plan for the authenticated developer account.
+
+Permissions:
+- Developer role only
+
+Validation rules:
+- Requires a valid active subscription plan UUID.
+- Developer cannot purchase duplicate active subscriptions simultaneously.
+""",
         request=CreateUserSubscriptionSerializer,
         responses={201: UserSubscriptionSerializer},
         tags=["User Subscriptions"],
-        summary="Purchase a subscription plan.",
     )
     def post(self, request):
-        # Validate request data.
-        serializer = CreateUserSubscriptionSerializer(
-            data=request.data,
-        )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        # Create new subscription.
+        serializer = CreateUserSubscriptionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         subscription = UserSubscriptionService.create_subscription(
             request.user,
             serializer.validated_data,
         )
-
-        # Return created object.
         return success_response(
             data=UserSubscriptionSerializer(subscription).data,
             message="Subscription purchased successfully.",
@@ -404,23 +361,26 @@ class UserSubscriptionListCreateAPIView(APIView):
 # ============================================================================
 class UserSubscriptionDetailAPIView(APIView):
 
-    # Assign permissions based on request method.
     def get_permissions(self):
         if self.request.method == "GET":
             return [IsAuthenticated()]
         return [IsAuthenticated(), IsAdminRole()]
 
-    # Swagger documentation for Retrieve Subscription.
+    # Swagger documentation for Retrieve User Subscription Details.
     @extend_schema(
+        summary="Retrieve User Subscription Details",
+        description="""
+Retrieves details for a specific user subscription by UUID.
+
+Permissions:
+- Admin: View any subscription.
+- Developer: View only their own subscription.
+""",
         responses={200: UserSubscriptionSerializer},
         tags=["User Subscriptions"],
-        summary="Retrieve user subscription details.",
     )
     def get(self, request, uuid):
-        # Fetch subscription by UUID.
         subscription = UserSubscriptionService.get_subscription(uuid)
-
-        # Check permissions: Admin or Owner.
         if (
             request.user.role != User.Role.ADMIN
             and subscription.user != request.user
@@ -428,42 +388,37 @@ class UserSubscriptionDetailAPIView(APIView):
             raise PermissionDenied(
                 "You do not have permission to access this subscription."
             )
-
-        # Convert model into JSON.
         serializer = UserSubscriptionSerializer(subscription)
-
         return success_response(
             data=serializer.data,
             message="User subscription details fetched successfully.",
         )
 
-    # Swagger documentation for Partial Update.
+    # Swagger documentation for Partially Update User Subscription.
     @extend_schema(
+        summary="Partially Update User Subscription",
+        description="""
+Partially updates user subscription status or renewal preferences by UUID.
+
+Permissions:
+- Admin Users only
+""",
         request=UpdateUserSubscriptionSerializer,
         responses={200: UserSubscriptionSerializer},
         tags=["User Subscriptions"],
-        summary="Partially update a user subscription (Admin only).",
     )
     def patch(self, request, uuid):
-        # Fetch existing subscription.
         subscription = UserSubscriptionService.get_subscription(uuid)
-
-        # Validate provided fields.
         serializer = UpdateUserSubscriptionSerializer(
             subscription,
             data=request.data,
             partial=True,
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
+        serializer.is_valid(raise_exception=True)
         subscription = UserSubscriptionService.update_subscription(
             subscription,
             serializer.validated_data,
         )
-
         return success_response(
             data=UserSubscriptionSerializer(subscription).data,
             message="User subscription updated successfully.",
@@ -471,19 +426,20 @@ class UserSubscriptionDetailAPIView(APIView):
 
     # Swagger documentation for Delete User Subscription.
     @extend_schema(
+        summary="Delete User Subscription",
+        description="""
+Soft-deletes a user subscription by UUID.
+
+Permissions:
+- Admin Users only
+""",
         responses={200: None},
         tags=["User Subscriptions"],
-        summary="Delete a user subscription (Admin only).",
     )
     def delete(self, request, uuid):
-        # Fetch existing subscription.
         subscription = UserSubscriptionService.get_subscription(uuid)
-
         UserSubscriptionService.delete_subscription(subscription)
-
-        return success_response(
-            message="User subscription deleted successfully.",
-        )
+        return success_response(message="User subscription deleted successfully.")
 
 
 # ============================================================================
@@ -494,8 +450,18 @@ class UserSubscriptionDetailAPIView(APIView):
 class MySubscriptionListAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for List My Subscriptions.
+    # Swagger documentation for List My Subscription History.
     @extend_schema(
+        summary="List My Subscription History",
+        description="""
+Returns a paginated subscription history for the currently authenticated developer.
+
+Permissions:
+- Authenticated Users
+
+Supports:
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="page",
@@ -512,29 +478,10 @@ class MySubscriptionListAPIView(APIView):
         ],
         responses={200: UserSubscriptionListSerializer(many=True)},
         tags=["User Subscriptions"],
-        summary="List my subscription history.",
     )
     def get(self, request):
-        # Get current user's subscriptions.
-        subscriptions = UserSubscriptionService.get_my_subscriptions(
-            request.user,
-        )
-
-        # Apply pagination.
+        subscriptions = UserSubscriptionService.get_my_subscriptions(request.user)
         paginator = StandardResultsSetPagination()
-
-        page = paginator.paginate_queryset(
-            subscriptions,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = UserSubscriptionListSerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
+        page = paginator.paginate_queryset(subscriptions, request)
+        serializer = UserSubscriptionListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)

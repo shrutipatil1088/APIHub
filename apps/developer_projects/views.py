@@ -29,8 +29,22 @@ from .services import DeveloperProjectService
 class DeveloperProjectListCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for List Projects.
+    # Swagger documentation for List Developer Projects.
     @extend_schema(
+        summary="List Developer Projects",
+        description="""
+Returns a paginated list of developer projects.
+
+Permissions:
+- Admin: View all projects.
+- Developer: View only their own projects.
+
+Supports:
+- Search (by name, description)
+- Filtering
+- Ordering (by name, created_at, updated_at)
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="search",
@@ -42,11 +56,7 @@ class DeveloperProjectListCreateAPIView(APIView):
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description=(
-                    "Order results. "
-                    "Available values: "
-                    "name, -name, created_at, -created_at, updated_at, -updated_at."
-                ),
+                description="Order results by field (e.g., name, -name, created_at).",
             ),
             OpenApiParameter(
                 name="page",
@@ -63,59 +73,44 @@ class DeveloperProjectListCreateAPIView(APIView):
         ],
         responses={200: DeveloperProjectSerializer(many=True)},
         tags=["Developer Projects"],
-        summary="List developer projects.",
     )
     def get(self, request):
-        # Fetch filtered/search/ordered queryset.
         projects = DeveloperProjectService.list_projects(
             request.user,
             request.query_params,
         )
-
-        # Apply pagination.
         paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(projects, request)
+        serializer = DeveloperProjectSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
-        page = paginator.paginate_queryset(
-            projects,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = DeveloperProjectSerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
-
-    # Swagger documentation for Create Project.
+    # Swagger documentation for Create Developer Project.
     @extend_schema(
+        summary="Create Developer Project",
+        description="""
+Creates a new developer project for the authenticated developer user.
+
+Permissions:
+- Developer role only
+
+Validation rules:
+- Requires a valid project name and description.
+- Developer cannot duplicate active project names.
+""",
         request=DeveloperProjectBaseSerializer,
         responses={201: DeveloperProjectSerializer},
         tags=["Developer Projects"],
-        summary="Create a new developer project.",
     )
     def post(self, request):
-        # Validate request data.
         serializer = DeveloperProjectBaseSerializer(
             data=request.data,
             context={"request": request},
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        # Create new project.
+        serializer.is_valid(raise_exception=True)
         project = DeveloperProjectService.create_project(
             request.user,
             serializer.validated_data,
         )
-
-        # Return created object.
         return success_response(
             data=DeveloperProjectSerializer(project).data,
             message="Developer project created successfully.",
@@ -134,17 +129,21 @@ class DeveloperProjectListCreateAPIView(APIView):
 class DeveloperProjectDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for Retrieve Project.
+    # Swagger documentation for Retrieve Developer Project Details.
     @extend_schema(
+        summary="Retrieve Developer Project Details",
+        description="""
+Retrieves details for a specific developer project by UUID.
+
+Permissions:
+- Admin: View any project.
+- Developer: View only their own project.
+""",
         responses={200: DeveloperProjectSerializer},
         tags=["Developer Projects"],
-        summary="Retrieve developer project details.",
     )
     def get(self, request, uuid):
-        # Fetch project by UUID.
         project = DeveloperProjectService.get_project(uuid)
-
-        # Check permission: Owner or Admin.
         if (
             request.user.role != User.Role.ADMIN
             and project.developer != request.user
@@ -152,110 +151,100 @@ class DeveloperProjectDetailAPIView(APIView):
             raise PermissionDenied(
                 "You do not have permission to access this project."
             )
-
-        # Convert model into JSON.
         serializer = DeveloperProjectSerializer(project)
-
         return success_response(
             data=serializer.data,
             message="Developer project details fetched successfully.",
         )
 
-    # Swagger documentation for Full Update.
+    # Swagger documentation for Fully Update Developer Project.
     @extend_schema(
+        summary="Fully Update Developer Project",
+        description="""
+Fully updates all fields of a developer project by UUID.
+
+Permissions:
+- Project Owner only
+""",
         request=DeveloperProjectBaseSerializer,
         responses={200: DeveloperProjectSerializer},
         tags=["Developer Projects"],
-        summary="Fully update a developer project (Owner only).",
     )
     def put(self, request, uuid):
-        # Fetch existing project.
         project = DeveloperProjectService.get_project(uuid)
-
-        # Check permission: Owner only.
         if project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to modify this project."
             )
-
-        # Validate request data.
         serializer = DeveloperProjectBaseSerializer(
             project,
             data=request.data,
             context={"request": request},
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
+        serializer.is_valid(raise_exception=True)
         project = DeveloperProjectService.update_project(
             project,
             serializer.validated_data,
         )
-
         return success_response(
             data=DeveloperProjectSerializer(project).data,
             message="Developer project updated successfully.",
         )
 
-    # Swagger documentation for Partial Update.
+    # Swagger documentation for Partially Update Developer Project.
     @extend_schema(
+        summary="Partially Update Developer Project",
+        description="""
+Partially updates specific fields of a developer project by UUID.
+
+Permissions:
+- Project Owner only
+""",
         request=DeveloperProjectBaseSerializer,
         responses={200: DeveloperProjectSerializer},
         tags=["Developer Projects"],
-        summary="Partially update a developer project (Owner only).",
     )
     def patch(self, request, uuid):
-        # Fetch existing project.
         project = DeveloperProjectService.get_project(uuid)
-
-        # Check permission: Owner only.
         if project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to modify this project."
             )
-
-        # Validate request data.
         serializer = DeveloperProjectBaseSerializer(
             project,
             data=request.data,
             partial=True,
             context={"request": request},
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
+        serializer.is_valid(raise_exception=True)
         project = DeveloperProjectService.update_project(
             project,
             serializer.validated_data,
         )
-
         return success_response(
             data=DeveloperProjectSerializer(project).data,
             message="Developer project updated successfully.",
         )
 
-    # Swagger documentation for Delete Project.
+    # Swagger documentation for Delete Developer Project.
     @extend_schema(
+        summary="Delete Developer Project",
+        description="""
+Soft-deletes a developer project by UUID.
+
+Permissions:
+- Project Owner only
+""",
         responses={200: None},
         tags=["Developer Projects"],
-        summary="Delete a developer project (Owner only).",
     )
     def delete(self, request, uuid):
-        # Fetch existing project.
         project = DeveloperProjectService.get_project(uuid)
-
-        # Check permission: Owner only.
         if project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to delete this project."
             )
-
         DeveloperProjectService.delete_project(project)
-
         return success_response(
             message="Developer project deleted successfully.",
         )

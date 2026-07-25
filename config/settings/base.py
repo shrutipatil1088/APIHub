@@ -203,6 +203,54 @@ SPECTACULAR_SETTINGS = {
 
     # Generate separate request and response schemas
     "COMPONENT_SPLIT_REQUEST": True,
+
+    # Custom TAGS order for Swagger UI
+    "TAGS": [
+        {
+            "name": "Authentication",
+            "description": "User registration, authentication, token refresh, logout, and profile management.",
+        },
+        {
+            "name": "Health Check",
+            "description": "System health and status monitoring endpoints.",
+        },
+        {
+            "name": "API Catalog",
+            "description": "API Catalog management endpoints.",
+        },
+        {
+            "name": "API Versions",
+            "description": "API Versioning management endpoints.",
+        },
+        {
+            "name": "API Endpoints",
+            "description": "API Endpoint specifications and metadata.",
+        },
+        {
+            "name": "API Documentation",
+            "description": "API Documentation endpoints.",
+        },
+        {
+            "name": "Developer Projects",
+            "description": "Developer project management endpoints.",
+        },
+        {
+            "name": "Subscription Plans",
+            "description": "Subscription plan management endpoints.",
+        },
+        {
+            "name": "User Subscriptions",
+            "description": "Developer user subscription lifecycle endpoints.",
+        },
+        {
+            "name": "API Keys",
+            "description": "Developer API Key management and protected sample endpoints.",
+        },
+        {
+            "name": "Usage Logs",
+            "description": "API Usage log querying and history endpoints.",
+        },
+    ],
 }
 
 

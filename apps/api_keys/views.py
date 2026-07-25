@@ -36,6 +36,20 @@ class APIKeyListCreateAPIView(APIView):
 
     # Swagger documentation for List API Keys.
     @extend_schema(
+        summary="List API Keys",
+        description="""
+Returns a paginated list of API keys for developer projects.
+
+Permissions:
+- Admin: View all API keys.
+- Developer: View only keys belonging to their own projects.
+
+Supports:
+- Search (by key name)
+- Filtering
+- Ordering (by name, created_at, updated_at, last_used_at)
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="search",
@@ -47,11 +61,7 @@ class APIKeyListCreateAPIView(APIView):
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description=(
-                    "Order results. "
-                    "Available values: "
-                    "name, -name, created_at, -created_at, updated_at, -updated_at, last_used_at, -last_used_at."
-                ),
+                description="Order results by field (e.g., name, -name, created_at, last_used_at).",
             ),
             OpenApiParameter(
                 name="page",
@@ -68,65 +78,47 @@ class APIKeyListCreateAPIView(APIView):
         ],
         responses={200: APIKeySerializer(many=True)},
         tags=["API Keys"],
-        summary="List API keys.",
     )
     def get(self, request):
-        # Fetch filtered/search/ordered queryset.
         keys = APIKeyService.list_keys(
             request.user,
             request.query_params,
         )
-
-        # Apply pagination.
         paginator = StandardResultsSetPagination()
-
-        page = paginator.paginate_queryset(
-            keys,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = APIKeySerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
+        page = paginator.paginate_queryset(keys, request)
+        serializer = APIKeySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     # Swagger documentation for Generate API Key.
     @extend_schema(
+        summary="Generate API Key",
+        description="""
+Generates a new secure API key for a developer project. Returns plain text key ONCE.
+
+Permissions:
+- Developer role with active subscription
+
+Validation rules:
+- Project must belong to the developer.
+- Requires active and unexpired developer subscription.
+""",
         request=APIKeyBaseSerializer,
         responses={201: APIKeySerializer},
         tags=["API Keys"],
-        summary="Generate a new API key.",
     )
     def post(self, request):
-        # Verify developer role before serializer validation
         if request.user.role != User.Role.DEVELOPER:
-            raise PermissionDenied(
-                "Only developers can generate API keys."
-            )
+            raise PermissionDenied("Only developers can generate API keys.")
 
-        # Validate request data.
         serializer = APIKeyBaseSerializer(
             data=request.data,
             context={"request": request},
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
-        # Generate new API key using service.
+        serializer.is_valid(raise_exception=True)
         api_key, plain_key = APIKeyService.create_key(
             request.user,
             serializer.validated_data,
         )
-
-        # Return response containing plain key once and key metadata.
         return success_response(
             data={
                 "api_key": plain_key,
@@ -147,17 +139,21 @@ class APIKeyListCreateAPIView(APIView):
 class APIKeyDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for Retrieve API Key metadata.
+    # Swagger documentation for Retrieve API Key Details.
     @extend_schema(
+        summary="Retrieve API Key Details",
+        description="""
+Retrieves metadata for a specific API key by UUID.
+
+Permissions:
+- Admin: View any key metadata.
+- Developer: View only their own key metadata.
+""",
         responses={200: APIKeySerializer},
         tags=["API Keys"],
-        summary="Retrieve API key details.",
     )
     def get(self, request, uuid):
-        # Fetch API key by UUID.
         key = APIKeyService.get_key(uuid)
-
-        # Check permission: Owner or Admin.
         if (
             request.user.role != User.Role.ADMIN
             and key.project.developer != request.user
@@ -165,10 +161,7 @@ class APIKeyDetailAPIView(APIView):
             raise PermissionDenied(
                 "You do not have permission to access this API key."
             )
-
-        # Convert model into JSON.
         serializer = APIKeySerializer(key)
-
         return success_response(
             data=serializer.data,
             message="API key details fetched successfully.",
@@ -176,38 +169,34 @@ class APIKeyDetailAPIView(APIView):
 
     # Swagger documentation for Rename API Key.
     @extend_schema(
+        summary="Rename API Key",
+        description="""
+Renames an existing API key by UUID.
+
+Permissions:
+- Key Owner only
+""",
         request=APIKeyUpdateSerializer,
         responses={200: APIKeySerializer},
         tags=["API Keys"],
-        summary="Rename an API key (Owner only).",
     )
     def patch(self, request, uuid):
-        # Fetch existing API key.
         key = APIKeyService.get_key(uuid)
-
-        # Check permission: Owner only.
         if key.project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to modify this API key."
             )
-
-        # Validate request data.
         serializer = APIKeyUpdateSerializer(
             key,
             data=request.data,
             partial=True,
             context={"request": request},
         )
-
-        serializer.is_valid(
-            raise_exception=True,
-        )
-
+        serializer.is_valid(raise_exception=True)
         key = APIKeyService.update_key(
             key,
             serializer.validated_data,
         )
-
         return success_response(
             data=APIKeySerializer(key).data,
             message="API key updated successfully.",
@@ -215,22 +204,23 @@ class APIKeyDetailAPIView(APIView):
 
     # Swagger documentation for Deactivate API Key.
     @extend_schema(
+        summary="Deactivate API Key",
+        description="""
+Deactivates an active API key by UUID.
+
+Permissions:
+- Key Owner only
+""",
         responses={200: None},
         tags=["API Keys"],
-        summary="Deactivate an API key (Owner only).",
     )
     def delete(self, request, uuid):
-        # Fetch existing API key.
         key = APIKeyService.get_key(uuid)
-
-        # Check permission: Owner only.
         if key.project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to deactivate this API key."
             )
-
         APIKeyService.deactivate_key(key)
-
         return success_response(
             message="API key deactivated successfully.",
         )
@@ -246,24 +236,24 @@ class APIKeyRegenerateAPIView(APIView):
 
     # Swagger documentation for Regenerate API Key.
     @extend_schema(
+        summary="Regenerate API Key",
+        description="""
+Regenerates an API key by generating a new secret hash and returning the plain key ONCE.
+
+Permissions:
+- Key Owner only with active subscription
+""",
         request=None,
         responses={200: APIKeySerializer},
         tags=["API Keys"],
-        summary="Regenerate an API key (Owner only).",
     )
     def post(self, request, uuid):
-        # Fetch existing API key.
         key = APIKeyService.get_key(uuid)
-
-        # Check permission: Owner only.
         if key.project.developer != request.user:
             raise PermissionDenied(
                 "You do not have permission to regenerate this API key."
             )
-
-        # Regenerate API key.
         key, plain_key = APIKeyService.regenerate_key(key)
-
         return success_response(
             data={
                 "api_key": plain_key,
@@ -282,20 +272,26 @@ class ProtectedSampleAPIView(APIView):
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for Protected Sample endpoint.
+    # Swagger documentation for Protected Sample Endpoint.
     @extend_schema(
+        summary="Protected Sample Endpoint",
+        description="""
+Sample protected API endpoint authenticated exclusively using developer API Key. Validates subscription & monthly usage limit, and automatically records usage log.
+
+Permissions:
+- Valid API Key in X-API-Key header (Active & Unexpired Subscription required)
+""",
         parameters=[
             OpenApiParameter(
                 name="X-API-Key",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.HEADER,
                 required=True,
-                description="Developer API Key",
+                description="Developer API Key (e.g., pk_live_...)",
             ),
         ],
         responses={200: ProtectedSampleResponseSerializer},
         tags=["API Keys"],
-        summary="Protected sample endpoint using API Key authentication.",
     )
     def get(self, request):
         start_time = time.perf_counter()
@@ -318,7 +314,6 @@ class ProtectedSampleAPIView(APIView):
             message="API Key authentication successful.",
         )
 
-        # Automatically record UsageLog entry using UsageLogService
         UsageLogService.log_request(
             request=request,
             response=response,
@@ -326,4 +321,3 @@ class ProtectedSampleAPIView(APIView):
         )
 
         return response
-

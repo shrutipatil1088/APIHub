@@ -27,6 +27,20 @@ class UsageLogListAPIView(APIView):
 
     # Swagger documentation for List Usage Logs.
     @extend_schema(
+        summary="List Usage Logs",
+        description="""
+Returns a paginated list of API usage logs for tracking request execution metadata.
+
+Permissions:
+- Admin: View all usage logs.
+- Developer: View only usage logs belonging to their own projects.
+
+Supports:
+- Search (by endpoint path)
+- Filtering (by project UUID, api_key UUID, status_code, method, requested_at date ranges)
+- Ordering (by requested_at, status_code, response_time_ms)
+- Pagination
+""",
         parameters=[
             OpenApiParameter(
                 name="search",
@@ -74,11 +88,7 @@ class UsageLogListAPIView(APIView):
                 name="ordering",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description=(
-                    "Order results. "
-                    "Available values: "
-                    "requested_at, -requested_at, status_code, -status_code, response_time_ms, -response_time_ms."
-                ),
+                description="Order results by field (e.g., requested_at, -requested_at, status_code, response_time_ms).",
             ),
             OpenApiParameter(
                 name="page",
@@ -95,33 +105,16 @@ class UsageLogListAPIView(APIView):
         ],
         responses={200: UsageLogSerializer(many=True)},
         tags=["Usage Logs"],
-        summary="List usage logs.",
     )
     def get(self, request):
-        # Fetch filtered/search/ordered queryset.
         logs = UsageLogService.list_logs(
             request.user,
             request.query_params,
         )
-
-        # Apply pagination.
         paginator = StandardResultsSetPagination()
-
-        page = paginator.paginate_queryset(
-            logs,
-            request,
-        )
-
-        # Convert queryset into JSON.
-        serializer = UsageLogSerializer(
-            page,
-            many=True,
-        )
-
-        # Return paginated response.
-        return paginator.get_paginated_response(
-            serializer.data,
-        )
+        page = paginator.paginate_queryset(logs, request)
+        serializer = UsageLogSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 # ============================================================================
@@ -132,17 +125,21 @@ class UsageLogListAPIView(APIView):
 class UsageLogDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Swagger documentation for Retrieve Usage Log details.
+    # Swagger documentation for Retrieve Usage Log Details.
     @extend_schema(
+        summary="Retrieve Usage Log Details",
+        description="""
+Retrieves metadata details for a specific API usage log entry by UUID.
+
+Permissions:
+- Admin: View any usage log details.
+- Developer: View only usage logs belonging to their own projects.
+""",
         responses={200: UsageLogSerializer},
         tags=["Usage Logs"],
-        summary="Retrieve usage log details.",
     )
     def get(self, request, uuid):
-        # Fetch UsageLog by UUID.
         log = UsageLogService.get_log(uuid)
-
-        # Check permission: Owner or Admin.
         if (
             request.user.role != User.Role.ADMIN
             and log.project.developer != request.user
@@ -150,10 +147,7 @@ class UsageLogDetailAPIView(APIView):
             raise PermissionDenied(
                 "You do not have permission to access this usage log."
             )
-
-        # Convert model into JSON.
         serializer = UsageLogSerializer(log)
-
         return success_response(
             data=serializer.data,
             message="Usage log details fetched successfully.",
