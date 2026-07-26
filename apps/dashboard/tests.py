@@ -148,6 +148,14 @@ class DashboardAPITests(APITestCase):
         self.assertEqual(data["current_subscription"]["status"], "ACTIVE")
         self.assertEqual(data["remaining_requests"], 9999)
 
+    def test_developer_dashboard_admin_forbidden(self):
+        url = reverse("dashboard-developer")
+
+        # Admin user request fails with 403 Forbidden
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_developer_dashboard_unlimited_plan_remaining_requests_null(self):
         # Update plan to unlimited (Enterprise)
         self.plan.request_limit = 0

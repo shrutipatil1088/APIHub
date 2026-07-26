@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
-from apps.core.permissions import IsAdminRole
+from apps.core.permissions import IsAdminRole, IsDeveloperRole
 from apps.core.responses import success_response
 
 from .serializers import (
@@ -48,7 +48,7 @@ Permissions:
 # GET -> Retrieve developer project & request metrics (Developer only)
 # ============================================================================
 class DeveloperDashboardAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDeveloperRole]
 
     # Swagger documentation for Developer Dashboard.
     @extend_schema(
@@ -57,7 +57,7 @@ class DeveloperDashboardAPIView(APIView):
 Retrieves developer-specific analytics, active subscription metadata, and request limits for the authenticated developer.
 
 Permissions:
-- Authenticated Developer Users
+- Developer Users only
 """,
         responses={200: DeveloperDashboardSerializer},
         tags=["Dashboard"],

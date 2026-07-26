@@ -17,3 +17,17 @@ class IsAdminRole(BasePermission):
             request.user.is_authenticated
             and request.user.role == User.Role.ADMIN
         )
+
+
+class IsDeveloperRole(BasePermission):
+    """
+    Allows access only to users with DEVELOPER role.
+    """
+
+    message = "Only developers can perform this action."
+
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == User.Role.DEVELOPER
+        )
