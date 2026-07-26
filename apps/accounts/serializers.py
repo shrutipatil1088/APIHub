@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 
-
 from .models import User
 
 
@@ -39,7 +38,6 @@ class RegisterSerializer(serializers.ModelSerializer):
                 {"confirm_password": "Passwords do not match."}
             )
         return attrs
-    
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -55,11 +53,31 @@ class UserSerializer(serializers.ModelSerializer):
         )
 
 
+class DeveloperSerializer(serializers.ModelSerializer):
+    """
+    Serializer for listing and retrieving developer user accounts.
+    """
+
+    class Meta:
+        model = User
+        fields = (
+            "uuid",
+            "email",
+            "full_name",
+            "phone_number",
+            "role",
+            "is_active",
+            "is_verified",
+            "created_at",
+            "updated_at",
+        )
+
+
 class LoginResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
     user = UserSerializer()
-    
+
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -89,7 +107,7 @@ class LoginSerializer(serializers.Serializer):
         attrs["user"] = user
 
         return attrs
-    
+
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
@@ -97,7 +115,7 @@ class LogoutSerializer(serializers.Serializer):
     def validate(self, attrs):
         self.token = attrs["refresh"]
         return attrs
-    
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:

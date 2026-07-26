@@ -277,15 +277,12 @@ class SubscriptionValidationService:
             return True
 
         # Calculate current month request count from UsageLog
-        now = timezone.now()
-        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
         from apps.usage_logs.models import UsageLog
 
         current_requests = UsageLog.objects.filter(
-            api_key=api_key,
+            api_key__subscription=subscription,
             is_deleted=False,
-            requested_at__gte=start_of_month,
+            requested_at__gte=subscription.start_date,
         ).count()
 
         if current_requests >= plan.request_limit:

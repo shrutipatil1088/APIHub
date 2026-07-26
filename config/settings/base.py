@@ -211,6 +211,10 @@ SPECTACULAR_SETTINGS = {
             "description": "User registration, authentication, token refresh, logout, and profile management.",
         },
         {
+            "name": "Developers",
+            "description": "Developer user account management endpoints (Admin only).",
+        },
+        {
             "name": "Health Check",
             "description": "System health and status monitoring endpoints.",
         },

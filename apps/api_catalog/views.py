@@ -517,7 +517,7 @@ Supports:
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 description="Filter by HTTP method (GET, POST, PUT, PATCH, DELETE).",
-                enum=Endpoint.Method.choices,
+                enum=Endpoint.Method.values,
             ),
             OpenApiParameter(
                 name="is_active",

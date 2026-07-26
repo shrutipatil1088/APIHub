@@ -6,6 +6,8 @@ from .views import (
     LogoutAPIView,
     ProfileAPIView,
     CustomTokenRefreshView,
+    DeveloperListAPIView,
+    DeveloperDetailAPIView,
 )
 
 urlpatterns = [
@@ -33,5 +35,15 @@ urlpatterns = [
         "profile/",
         ProfileAPIView.as_view(),
         name="profile",
+    ),
+    path(
+        "developers/",
+        DeveloperListAPIView.as_view(),
+        name="developer-list",
+    ),
+    path(
+        "developers/<uuid:uuid>/",
+        DeveloperDetailAPIView.as_view(),
+        name="developer-detail",
     ),
 ]

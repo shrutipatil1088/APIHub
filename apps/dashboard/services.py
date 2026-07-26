@@ -121,7 +121,13 @@ class DashboardService:
             )
 
             if not is_unlimited:
-                remaining_requests = max(0, plan.request_limit - my_requests_this_month)
+                # Count requests made under the current active subscription since its start_date
+                current_sub_requests = UsageLog.objects.filter(
+                    api_key__subscription=subscription,
+                    is_deleted=False,
+                    requested_at__gte=subscription.start_date,
+                ).count()
+                remaining_requests = max(0, plan.request_limit - current_sub_requests)
 
         return {
             "my_projects": my_projects,

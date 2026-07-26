@@ -2,15 +2,23 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenRefreshView
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiTypes,
+    extend_schema,
+)
 
+from apps.core.permissions import IsAdminRole
+from apps.core.pagination import StandardResultsSetPagination
 from apps.core.responses import success_response
+
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     LoginResponseSerializer,
     LogoutSerializer,
     ProfileSerializer,
+    DeveloperSerializer,
 )
 from .services import AuthenticationService
 
@@ -159,4 +167,93 @@ Permissions:
         return success_response(
             data=serializer.data,
             message="Profile fetched successfully.",
+        )
+
+
+# ============================================================================
+# Developer List Endpoint (Admin Only)
+# ============================================================================
+class DeveloperListAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(
+        summary="List Developers",
+        description="""
+Returns a paginated list of all developer user accounts in the platform.
+
+Permissions:
+- Admin Users only
+
+Supports:
+- Search (by email, full_name)
+- Filtering (by is_active)
+- Ordering (by email, full_name, created_at, updated_at)
+- Pagination
+""",
+        parameters=[
+            OpenApiParameter(
+                name="is_active",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter developers by active status.",
+            ),
+            OpenApiParameter(
+                name="search",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Search developers by email or full name.",
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Order results by field (e.g., email, -created_at).",
+            ),
+            OpenApiParameter(
+                name="page",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Page number.",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Number of records per page (max 100).",
+            ),
+        ],
+        responses={200: DeveloperSerializer(many=True)},
+        tags=["Developers"],
+    )
+    def get(self, request):
+        developers = AuthenticationService.list_developers(request.query_params)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(developers, request)
+        serializer = DeveloperSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# ============================================================================
+# Developer Detail Endpoint (Admin Only)
+# ============================================================================
+class DeveloperDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(
+        summary="Retrieve Developer Details",
+        description="""
+Retrieves account details for a specific developer by UUID.
+
+Permissions:
+- Admin Users only
+""",
+        responses={200: DeveloperSerializer},
+        tags=["Developers"],
+    )
+    def get(self, request, uuid):
+        developer = AuthenticationService.get_developer(uuid)
+        serializer = DeveloperSerializer(developer)
+        return success_response(
+            data=serializer.data,
+            message="Developer details fetched successfully.",
         )
