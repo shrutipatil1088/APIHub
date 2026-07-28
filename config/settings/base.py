@@ -117,6 +117,31 @@ DATABASES = {
     }
 }
 
+API_VERSION = "1.0.0"
+CACHE_TTL = 60 * 15  # 15 minutes
+
+# -----------------------------------------------------------------------------
+# Redis Cache Configuration
+# -----------------------------------------------------------------------------
+
+REDIS_HOST = config("REDIS_HOST", default="127.0.0.1")
+REDIS_PORT = config("REDIS_PORT", default="6379", cast=int)
+REDIS_DB = config("REDIS_DB", default="1", cast=int)
+REDIS_URL = config("REDIS_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {
+                "protocol": 2,
+            },
+        },
+    }
+}
+
 # -----------------------------------------------------------------------------
 # Password Validation
 # -----------------------------------------------------------------------------
