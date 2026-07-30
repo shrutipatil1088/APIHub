@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import sys
 from decouple import config
 from datetime import timedelta
 
@@ -28,6 +29,12 @@ SECRET_KEY = config("SECRET_KEY")
 # -----------------------------------------------------------------------------
 
 INSTALLED_APPS = [
+    # ASGI Server : it used to run Django with ASGI support for WebSockets and other protocols
+    # ASGI server that accepts HTTP and WebSocket connections.
+    # Daphne is an ASGI server.
+    # Every HTTP request and every WebSocket connection first reaches Daphne.
+    "daphne",
+
     # Django Apps
     "django.contrib.admin",
     "django.contrib.auth",
@@ -43,6 +50,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "django_filters",
     "corsheaders",
+    "channels",       # Django Channels for WebSocket support
 
     # Local Apps
     "apps.accounts",
@@ -97,10 +105,11 @@ TEMPLATES = [
 ]
 
 # -----------------------------------------------------------------------------
-# WSGI
+# WSGI & ASGI
 # -----------------------------------------------------------------------------
 
 WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
 
 # -----------------------------------------------------------------------------
 # Database
@@ -141,6 +150,31 @@ CACHES = {
         },
     }
 }
+
+# -----------------------------------------------------------------------------
+# Channel Layers (Django Channels Redis backend with test fallback)
+# -----------------------------------------------------------------------------
+
+if "test" in sys.argv or config("USE_IN_MEMORY_CHANNEL_LAYER", default=True, cast=bool):
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [
+                    {
+                        "address": config("REDIS_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0"),
+                        "protocol": 2,
+                    }
+                ],
+            },
+        },
+    }
 
 # -----------------------------------------------------------------------------
 # Password Validation

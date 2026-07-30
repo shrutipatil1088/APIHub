@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIHub - Live Real-Time Dashboard Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+        }
+        header {
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2rem;
+            color: #38bdf8;
+            margin-bottom: 8px;
+        }
+        p.subtitle {
+            color: #94a3b8;
+            font-size: 0.95rem;
+        }
+        .card {
+            background-color: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        .form-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        input, button, select {
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #475569;
+            background-color: #0f172a;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        input:focus, select:focus {
+            outline: 2px solid #38bdf8;
+        }
+        button {
+            background-color: #0284c7;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #0369a1;
+        }
+        button.success-btn {
+            background-color: #16a34a;
+        }
+        button.success-btn:hover {
+            background-color: #15803d;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status-connected { background-color: #15803d; color: #dcfce7; }
+        .status-disconnected { background-color: #991b1b; color: #fee2e2; }
+        .status-connecting { background-color: #b45309; color: #fef3c7; }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+        .metric-box {
+            background-color: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #334155;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-top: 4px;
+            transition: transform 0.2s, color 0.2s;
+        }
+        .metric-value.updated {
+            color: #4ade80;
+            transform: scale(1.15);
+        }
+        .metric-label {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .logs-box {
+            background-color: #020617;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            height: 220px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+        .log-entry {
+            margin-bottom: 6px;
+            border-bottom: 1px dashed #1e293b;
+            padding-bottom: 4px;
+        }
+        .log-time { color: #64748b; }
+        .log-event { color: #38bdf8; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>⚡ APIHub Real-Time Dashboard</h1>
+        <p class="subtitle">Django Channels & Redis WebSocket Live Synchronization Demo</p>
+    </header>
+
+    <!-- Authentication & Connection Control -->
+    <div class="card">
+        <h3>1. Authentication & Connection</h3>
+        <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 12px;">Log in as an Admin or Developer to acquire a JWT token and establish a WebSocket connection.</p>
+        
+        <div class="form-group">
+            <input type="email" id="emailInput" placeholder="Email Address" value="admin@apihub.com" style="flex: 2;">
+            <input type="password" id="passwordInput" placeholder="Password" value="admin123" style="flex: 1;">
+            <button id="connectBtn" onclick="loginAndConnect()">Login & Connect WS</button>
+            <button id="disconnectBtn" onclick="disconnectWS()" style="background-color: #dc2626; display: none;">Disconnect</button>
+        </div>
+        <div>
+            Connection Status: <span id="statusBadge" class="status-badge status-disconnected">DISCONNECTED</span>
+            <span id="userInfo" style="margin-left: 12px; color: #94a3b8; font-size: 0.85rem;"></span>
+        </div>
+    </div>
+
+    <!-- Live Metrics Dashboard Display -->
+    <div class="card">
+        <h3>2. Real-Time Metrics (<span id="dashboardType">Waiting for connection...</span>)</h3>
+        
+        <div id="metricsContainer" class="metrics-grid">
+            <div class="metric-box">
+                <div class="metric-label">Today Requests</div>
+                <div class="metric-value" id="today_requests">-</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">This Month Requests</div>
+                <div class="metric-value" id="this_month_requests">-</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Total Developers</div>
+                <div class="metric-value" id="total_developers">-</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Total Projects</div>
+                <div class="metric-value" id="total_projects">-</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Total API Keys</div>
+                <div class="metric-value" id="total_api_keys">-</div>
+            </div>
+            <div class="metric-box">
+                <div class="metric-label">Active Subscriptions</div>
+                <div class="metric-value" id="active_subscriptions">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Log Console -->
+    <div class="card">
+        <h3>3. WebSocket Incoming Stream Log</h3>
+        <div id="logsBox" class="logs-box">
+            <div class="log-entry"><span class="log-time">[System]</span> Ready to connect to ws://127.0.0.1:8000/ws/dashboard/</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let socket = null;
+    let jwtToken = null;
+
+    async function loginAndConnect() {
+        const email = document.getElementById('emailInput').value;
+        const password = document.getElementById('passwordInput').value;
+        const statusBadge = document.getElementById('statusBadge');
+        
+        statusBadge.className = "status-badge status-connecting";
+        statusBadge.innerText = "AUTHENTICATING...";
+
+        try {
+            // 1. Obtain JWT Access Token
+            const res = await fetch('http://127.0.0.1:8000/api/v1/auth/login/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const json = await res.json();
+
+            if (!res.ok || !json.success) {
+                alert("Login Failed: " + (json.message || "Invalid credentials"));
+                statusBadge.className = "status-badge status-disconnected";
+                statusBadge.innerText = "AUTH FAILED";
+                return;
+            }
+
+            jwtToken = json.data.tokens.access;
+            document.getElementById('userInfo').innerText = `Logged in as: ${json.data.user.email} (${json.data.user.role})`;
+            
+            // 2. Connect to WebSocket with ?token=<jwt_access_token>
+            connectWebSocket(jwtToken);
+
+        } catch (err) {
+            console.error(err);
+            alert("Connection error: " + err.message);
+            statusBadge.className = "status-badge status-disconnected";
+            statusBadge.innerText = "ERROR";
+        }
+    }
+
+    function connectWebSocket(token) {
+        const statusBadge = document.getElementById('statusBadge');
+        const wsUrl = `ws://127.0.0.1:8000/ws/dashboard/?token=${token}`;
+        
+        logMessage("Connecting to WebSocket: " + wsUrl);
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = function(e) {
+            statusBadge.className = "status-badge status-connected";
+            statusBadge.innerText = "CONNECTED (LIVE)";
+            document.getElementById('connectBtn').style.display = 'none';
+            document.getElementById('disconnectBtn').style.display = 'inline-block';
+            logMessage("WebSocket Handshake Successful! Waiting for real-time broadcasts...");
+        };
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            logMessage(`Received Broadcast Event: <span class="log-event">${data.event}</span>`);
+            updateDashboardUI(data);
+        };
+
+        socket.onclose = function(event) {
+            statusBadge.className = "status-badge status-disconnected";
+            statusBadge.innerText = `DISCONNECTED (Code ${event.code})`;
+            document.getElementById('connectBtn').style.display = 'inline-block';
+            document.getElementById('disconnectBtn').style.display = 'none';
+            logMessage(`WebSocket Closed. Code: ${event.code}`);
+        };
+
+        socket.onerror = function(error) {
+            logMessage("WebSocket Error: " + error.message);
+        };
+    }
+
+    function disconnectWS() {
+        if (socket) {
+            socket.close();
+        }
+    }
+
+    function updateDashboardUI(payload) {
+        const eventType = payload.event;
+        const data = payload.data;
+        document.getElementById('dashboardType').innerText = eventType;
+
+        for (const [key, value] of Object.entries(data)) {
+            const elem = document.getElementById(key);
+            if (elem) {
+                if (elem.innerText !== String(value)) {
+                    elem.innerText = value;
+                    elem.classList.add('updated');
+                    setTimeout(() => elem.classList.remove('updated'), 1000);
+                }
+            }
+        }
+    }
+
+    function logMessage(msg) {
+        const box = document.getElementById('logsBox');
+        const time = new Date().toLocaleTimeString();
+        box.innerHTML += `<div class="log-entry"><span class="log-time">[${time}]</span> ${msg}</div>`;
+        box.scrollTop = box.scrollHeight;
+    }
+</script>
+</body>
+</html>

@@ -1,4 +1,6 @@
 from django.utils import timezone
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from apps.accounts.models import User
 from apps.api_catalog.models import API, APIVersion, Endpoint
@@ -14,7 +16,7 @@ class DashboardService:
     """
 
     @staticmethod
-    def get_admin_dashboard(user):
+    def get_admin_dashboard(user=None):
         """
         Calculates and returns platform-wide analytics for Admin users.
         """
@@ -137,3 +139,72 @@ class DashboardService:
             "current_subscription": current_subscription_data,
             "remaining_requests": remaining_requests,
         }
+
+
+class DashboardWebSocketService:
+    """
+    Handles real-time WebSocket broadcast operations for the Dashboard module.
+    Pushes personalized aggregated system metrics to dedicated channel groups:
+    - 'dashboard_admin' for Admin users
+    - 'dashboard_user_<user_id>' for Developer users
+    """
+
+    ADMIN_GROUP = "dashboard_admin"
+
+    @classmethod
+    def broadcast_admin_dashboard_update(cls):
+        """
+        Collects latest platform dashboard statistics for Admin users using
+        DashboardService.get_admin_dashboard() as the single source of truth
+        and broadcasts them to all connected Admin WebSocket clients.
+        """
+        admin_metrics = DashboardService.get_admin_dashboard(user=None)
+
+        payload = {
+            "event": "admin_dashboard_update",
+            "data": admin_metrics,
+        }
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                cls.ADMIN_GROUP,
+                {
+                    "type": "admin_dashboard_update",
+                    "payload": payload,
+                },
+            )
+
+    @classmethod
+    def broadcast_developer_dashboard_update(cls, user):
+        """
+        Collects developer-specific analytics using DashboardService.get_developer_dashboard(user)
+        as the single source of truth and broadcasts them exclusively to that developer's group.
+        """
+        if not user or getattr(user, "role", None) != User.Role.DEVELOPER:
+            return
+
+        developer_metrics = DashboardService.get_developer_dashboard(user)
+        group_name = f"dashboard_user_{user.id}"
+
+        payload = {
+            "event": "developer_dashboard_update",
+            "data": developer_metrics,
+        }
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                group_name,
+                {
+                    "type": "developer_dashboard_update",
+                    "payload": payload,
+                },
+            )
+
+    @classmethod
+    def broadcast_dashboard_update(cls):
+        """
+        Backward compatibility method that triggers broadcast_admin_dashboard_update.
+        """
+        cls.broadcast_admin_dashboard_update()
