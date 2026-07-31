@@ -1,3 +1,5 @@
+import json
+from django.core.serializers.json import DjangoJSONEncoder
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from apps.accounts.models import User
 
@@ -11,6 +13,13 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
     """
 
     ADMIN_GROUP = "dashboard_admin"
+
+    @classmethod
+    async def encode_json(cls, content):
+        """
+        Custom JSON encoder using DjangoJSONEncoder to handle UUID, datetime, Decimal, etc.
+        """
+        return json.dumps(content, cls=DjangoJSONEncoder)
 
     async def connect(self):
         """
@@ -42,7 +51,7 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
         Removes the channel from the client's assigned group.
         """
         if hasattr(self, "group_name"):
-            await self.channel_layer.group_discard( #This removes the current connection from the group.
+            await self.channel_layer.group_discard(
                 self.group_name,
                 self.channel_name,
             )

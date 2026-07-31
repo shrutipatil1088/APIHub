@@ -321,6 +321,44 @@ class DashboardSignalBroadcastingTests(APITestCase):
         mock_admin_broadcast.assert_called_once()
         mock_dev_broadcast.assert_not_called()
 
+    @patch.object(DashboardWebSocketService, "broadcast_admin_dashboard_update")
+    def test_api_version_created_triggers_admin_broadcast(self, mock_admin_broadcast):
+        api_obj = API.objects.create(
+            name="Version Test API",
+            slug="version-test-api",
+            description="API description meeting minimum requirements.",
+            status=API.Status.PUBLISHED,
+            created_by=self.admin_user,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            APIVersion.objects.create(
+                api=api_obj,
+                version="v2.0",
+            )
+        mock_admin_broadcast.assert_called()
+
+    @patch.object(DashboardWebSocketService, "broadcast_admin_dashboard_update")
+    def test_endpoint_created_triggers_admin_broadcast(self, mock_admin_broadcast):
+        api_obj = API.objects.create(
+            name="Endpoint Test API",
+            slug="endpoint-test-api",
+            description="API description meeting minimum requirements.",
+            status=API.Status.PUBLISHED,
+            created_by=self.admin_user,
+        )
+        version_obj = APIVersion.objects.create(
+            api=api_obj,
+            version="v1.0",
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Endpoint.objects.create(
+                version=version_obj,
+                path="/test-api/v1/endpoint",
+                method=Endpoint.Method.POST,
+                summary="New Endpoint Test",
+            )
+        mock_admin_broadcast.assert_called()
+
 
 class DashboardWebSocketTests(APITransactionTestCase):
     """

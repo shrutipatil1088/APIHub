@@ -107,10 +107,10 @@ class DashboardService:
 
         if subscription:
             current_subscription_data = {
-                "uuid": subscription.uuid,
+                "uuid": str(subscription.uuid),
                 "plan": subscription.plan.name,
                 "status": subscription.status,
-                "expires_at": subscription.end_date,
+                "expires_at": subscription.end_date.isoformat() if subscription.end_date else None,
             }
 
             plan = subscription.plan
