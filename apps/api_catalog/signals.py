@@ -3,6 +3,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.dashboard.services import DashboardWebSocketService
+from apps.notifications.models import Notification
+from apps.notifications.services import NotificationWebSocketService
 from .models import API, APIVersion, Endpoint
 
 
@@ -10,12 +12,19 @@ from .models import API, APIVersion, Endpoint
 def trigger_dashboard_update_on_api_publish(sender, instance, created, **kwargs):
     """
     Signal handler that triggers real-time WebSocket dashboard broadcast
-    whenever an API instance is saved with status PUBLISHED.
-    Broadcasts updated Admin metrics to 'dashboard_admin' group.
+    and Admin notification whenever an API instance is published.
     """
     if instance.status == API.Status.PUBLISHED:
         transaction.on_commit(
             DashboardWebSocketService.broadcast_admin_dashboard_update
+        )
+        transaction.on_commit(
+            lambda: NotificationWebSocketService.send_admin_notification(
+                title="New API Published",
+                message=f"{instance.name} has been published.",
+                notification_type=Notification.NotificationType.API_PUBLISHED,
+                metadata={"api_uuid": str(instance.uuid), "api_name": instance.name},
+            )
         )
 
 
@@ -24,7 +33,6 @@ def trigger_dashboard_update_on_api_version_save(sender, instance, created, **kw
     """
     Signal handler that triggers real-time WebSocket dashboard broadcast
     whenever a new APIVersion instance is created.
-    Broadcasts updated Admin metrics to 'dashboard_admin' group.
     """
     if created:
         transaction.on_commit(
@@ -37,7 +45,6 @@ def trigger_dashboard_update_on_endpoint_save(sender, instance, created, **kwarg
     """
     Signal handler that triggers real-time WebSocket dashboard broadcast
     whenever a new Endpoint instance is created.
-    Broadcasts updated Admin metrics to 'dashboard_admin' group.
     """
     if created:
         transaction.on_commit(
