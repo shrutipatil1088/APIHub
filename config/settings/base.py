@@ -152,6 +152,40 @@ CACHES = {
 }
 
 # -----------------------------------------------------------------------------
+# Celery Configuration
+# -----------------------------------------------------------------------------
+
+import redis
+
+# Patch redis-py ConnectionPool to use RESP2 protocol by default.
+# This prevents 'unknown command HELLO' error when connecting to Redis < 6.0 / Windows Redis.
+_orig_pool_init = redis.ConnectionPool.__init__
+
+# This patch forces the Redis Python client to use the older RESP2 protocol, 
+# making Celery and Django compatible with older Redis servers that don't support the HELLO command used by RESP3.
+def _patched_pool_init(self, *args, **kwargs):
+    kwargs.setdefault("protocol", 2)
+    _orig_pool_init(self, *args, **kwargs)
+
+
+redis.ConnectionPool.__init__ = _patched_pool_init
+
+# Redis acts as the Message Broker (queue) where enqueued tasks are stored.
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
+
+# Redis acts as the Result Backend where task execution results/statuses are stored.
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
+
+# Align Celery timezone with Django project's TIME_ZONE.
+CELERY_TIMEZONE = config("TIME_ZONE", default="UTC")
+
+# Use JSON format for serializing task data safely.
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+
+
+# -----------------------------------------------------------------------------
 # Channel Layers (Django Channels Redis backend with test fallback)
 # -----------------------------------------------------------------------------
 

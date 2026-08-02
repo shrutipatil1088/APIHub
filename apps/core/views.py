@@ -1,10 +1,13 @@
 from django.conf import settings
 from django.db import connection
 from django.core.cache import caches
+from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
+
+from .tasks import say_hello
 
 
 class HealthCheckAPIView(APIView):
@@ -67,4 +70,43 @@ Permissions:
                 "database": database_status,
                 "redis": redis_status,
             }
+        )
+
+
+class TestCeleryAPIView(APIView):
+    """
+    Temporary DRF API endpoint for learning Celery basics.
+    Triggers say_hello.delay() asynchronously.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Trigger Test Celery Task",
+        description="""
+Triggers the say_hello Celery task asynchronously using .delay().
+
+Permissions:
+- Public (Unauthenticated)
+""",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                },
+            }
+        },
+        tags=["Celery Learning"],
+    )
+    def post(self, request):
+        # Trigger the Celery task asynchronously.
+        # .delay() doesn't execute the function directly.
+        # It sends a task message to Redis.
+        # .delay() sends task payload to Redis queue and returns control immediately.
+        say_hello.delay()
+
+        return Response(
+            {"message": "Task queued successfully."},
+            status=status.HTTP_200_OK,
         )
