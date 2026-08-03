@@ -2,12 +2,13 @@ from django.conf import settings
 from django.db import connection
 from django.core.cache import caches
 from rest_framework import status
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
 
-from .tasks import say_hello
+from .tasks import say_hello, generate_daily_report
 
 
 class HealthCheckAPIView(APIView):
@@ -25,17 +26,18 @@ Checks system health, service operational status, database connectivity, and Red
 Permissions:
 - Public (Unauthenticated)
 """,
+        request=None,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "status": {"type": "string"},
-                    "service": {"type": "string"},
-                    "version": {"type": "string"},
-                    "database": {"type": "string"},
-                    "redis": {"type": "string"},
+            200: inline_serializer(
+                name="HealthCheckResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "service": serializers.CharField(),
+                    "version": serializers.CharField(),
+                    "database": serializers.CharField(),
+                    "redis": serializers.CharField(),
                 },
-            }
+            )
         },
         tags=["Health Check"],
     )
@@ -89,24 +91,63 @@ Triggers the say_hello Celery task asynchronously using .delay().
 Permissions:
 - Public (Unauthenticated)
 """,
+        request=None,
         responses={
-            200: {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string"},
+            200: inline_serializer(
+                name="TestCeleryResponse",
+                fields={
+                    "message": serializers.CharField(),
                 },
-            }
+            )
         },
         tags=["Celery Learning"],
     )
     def post(self, request):
         # Trigger the Celery task asynchronously.
         # .delay() doesn't execute the function directly.
-        # It sends a task message to Redis.
-        # .delay() sends task payload to Redis queue and returns control immediately.
+        # It sends a task message to Redis queue and returns control immediately.
         say_hello.delay()
 
         return Response(
             {"message": "Task queued successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class GenerateDailyReportAPIView(APIView):
+    """
+    Temporary DRF API endpoint for learning Celery database tasks.
+    Triggers generate_daily_report.delay() asynchronously.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Trigger Daily Platform Report Task",
+        description="""
+Triggers the generate_daily_report Celery task asynchronously using .delay().
+Queries database metrics in the background worker and prints/logs the daily report.
+
+Permissions:
+- Public (Unauthenticated)
+""",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="GenerateDailyReportResponse",
+                fields={
+                    "message": serializers.CharField(),
+                },
+            )
+        },
+        tags=["Celery Learning"],
+    )
+    def post(self, request):
+        # Trigger the daily report task asynchronously.
+        # Returns control immediately without waiting for database query completion.
+        generate_daily_report.delay()
+
+        return Response(
+            {"message": "Daily report task queued successfully."},
             status=status.HTTP_200_OK,
         )
