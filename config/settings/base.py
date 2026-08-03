@@ -156,19 +156,32 @@ CACHES = {
 # -----------------------------------------------------------------------------
 
 import redis
+import redis.asyncio
 
-# Patch redis-py ConnectionPool to use RESP2 protocol by default.
+# Patch synchronous and asynchronous redis-py ConnectionPool to use RESP2 protocol by default.
 # This prevents 'unknown command HELLO' error when connecting to Redis < 6.0 / Windows Redis.
 _orig_pool_init = redis.ConnectionPool.__init__
 
-# This patch forces the Redis Python client to use the older RESP2 protocol, 
-# making Celery and Django compatible with older Redis servers that don't support the HELLO command used by RESP3.
+
 def _patched_pool_init(self, *args, **kwargs):
     kwargs.setdefault("protocol", 2)
     _orig_pool_init(self, *args, **kwargs)
 
 
 redis.ConnectionPool.__init__ = _patched_pool_init
+
+try:
+    _orig_async_pool_init = redis.asyncio.connection.ConnectionPool.__init__
+
+
+    def _patched_async_pool_init(self, *args, **kwargs):
+        kwargs.setdefault("protocol", 2)
+        _orig_async_pool_init(self, *args, **kwargs)
+
+
+    redis.asyncio.connection.ConnectionPool.__init__ = _patched_async_pool_init
+except Exception:
+    pass
 
 # Redis acts as the Message Broker (queue) where enqueued tasks are stored.
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
@@ -189,7 +202,7 @@ CELERY_RESULT_SERIALIZER = "json"
 # Channel Layers (Django Channels Redis backend with test fallback)
 # -----------------------------------------------------------------------------
 
-if "test" in sys.argv or config("USE_IN_MEMORY_CHANNEL_LAYER", default=True, cast=bool):
+if "test" in sys.argv or config("USE_IN_MEMORY_CHANNEL_LAYER", default=False, cast=bool):
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -198,13 +211,10 @@ if "test" in sys.argv or config("USE_IN_MEMORY_CHANNEL_LAYER", default=True, cas
 else:
     CHANNEL_LAYERS = {
         "default": {
-            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "BACKEND": "channels_redis.pubsub.RedisPubSubChannelLayer",
             "CONFIG": {
                 "hosts": [
-                    {
-                        "address": config("REDIS_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0"),
-                        "protocol": 2,
-                    }
+                    config("REDIS_URL", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0"),
                 ],
             },
         },

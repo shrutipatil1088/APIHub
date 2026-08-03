@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, inline_serializer
 
-from .tasks import say_hello, generate_daily_report
+from .tasks import say_hello, generate_daily_report, check_subscription_reminders
 
 
 class HealthCheckAPIView(APIView):
@@ -149,5 +149,44 @@ Permissions:
 
         return Response(
             {"message": "Daily report task queued successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class SubscriptionReminderAPIView(APIView):
+    """
+    Temporary DRF API endpoint for learning Celery subscription reminder tasks.
+    Triggers check_subscription_reminders.delay() asynchronously.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Trigger Subscription Reminder Task",
+        description="""
+Triggers the check_subscription_reminders Celery task asynchronously using .delay().
+Queries active subscriptions expiring in 3 days and sends WebSocket notifications to developers.
+
+Permissions:
+- Public (Unauthenticated)
+""",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="SubscriptionReminderResponse",
+                fields={
+                    "message": serializers.CharField(),
+                },
+            )
+        },
+        tags=["Celery Learning"],
+    )
+    def post(self, request):
+        # Trigger the subscription reminder task asynchronously.
+        # Returns control immediately without waiting for task completion.
+        check_subscription_reminders.delay()
+
+        return Response(
+            {"message": "Subscription reminder task queued successfully."},
             status=status.HTTP_200_OK,
         )

@@ -1,4 +1,6 @@
 from unittest.mock import patch
+from datetime import timedelta
+from django.utils import timezone
 from django.urls import reverse
 from django.core.cache import cache
 from rest_framework import status
@@ -7,7 +9,9 @@ from rest_framework.test import APITestCase
 from apps.accounts.models import User
 from apps.api_catalog.models import API
 from apps.developer_projects.models import DeveloperProject
-from apps.core.tasks import say_hello, generate_daily_report
+from apps.subscriptions.models import SubscriptionPlan, UserSubscription
+from apps.notifications.models import Notification
+from apps.core.tasks import say_hello, generate_daily_report, check_subscription_reminders
 
 
 class HealthCheckAPITests(APITestCase):
@@ -98,4 +102,51 @@ class CeleryTaskTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Daily report task queued successfully.")
+        mock_delay.assert_called_once()
+
+    def test_check_subscription_reminders_task_execution(self):
+        dev = User.objects.create_user(
+            email="reminder_dev@example.com",
+            password="securepassword123",
+            full_name="Reminder Dev",
+            role=User.Role.DEVELOPER,
+        )
+        plan = SubscriptionPlan.objects.create(
+            name="Reminder Plan",
+            description="Plan for reminder test",
+            price=29.99,
+            billing_cycle=SubscriptionPlan.BillingCycle.MONTHLY,
+            request_limit=1000,
+            is_active=True,
+        )
+        
+        # Subscriptions expiring in 3, 2, 1, and 0 days
+        for days in [3, 2, 1, 0]:
+            UserSubscription.objects.create(
+                user=dev,
+                plan=plan,
+                start_date=timezone.now() - timedelta(days=27),
+                end_date=timezone.now() + timedelta(days=days),
+                status=UserSubscription.Status.ACTIVE,
+            )
+
+        result = check_subscription_reminders()
+
+        self.assertEqual(result["processed"], 4)
+
+        notifs = Notification.objects.filter(recipient=dev)
+        self.assertEqual(notifs.count(), 4)
+
+        titles = list(notifs.values_list("title", flat=True))
+        self.assertIn("Subscription Expiring Soon", titles)
+        self.assertIn("Subscription Expiring Tomorrow", titles)
+        self.assertIn("Subscription Expires Today", titles)
+
+    @patch("apps.core.views.check_subscription_reminders.delay")
+    def test_subscription_reminder_endpoint(self, mock_delay):
+        url = reverse("subscription-reminder")
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Subscription reminder task queued successfully.")
         mock_delay.assert_called_once()

@@ -1,5 +1,10 @@
 from django.urls import path
-from .views import HealthCheckAPIView, TestCeleryAPIView, GenerateDailyReportAPIView
+from .views import (
+    HealthCheckAPIView,
+    TestCeleryAPIView,
+    GenerateDailyReportAPIView,
+    SubscriptionReminderAPIView,
+)
 
 urlpatterns = [
     path(
@@ -16,5 +21,10 @@ urlpatterns = [
         "generate-report/",
         GenerateDailyReportAPIView.as_view(),
         name="generate-daily-report",
+    ),
+    path(
+        "subscription-reminder/",
+        SubscriptionReminderAPIView.as_view(),
+        name="subscription-reminder",
     ),
 ]
