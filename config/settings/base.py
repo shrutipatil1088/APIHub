@@ -189,13 +189,30 @@ CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=f"redis://{REDIS_HOST}:{
 # Redis acts as the Result Backend where task execution results/statuses are stored.
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
 
-# Align Celery timezone with Django project's TIME_ZONE.
-CELERY_TIMEZONE = config("TIME_ZONE", default="UTC")
+from celery.schedules import crontab
 
 # Use JSON format for serializing task data safely.
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
+
+# -----------------------------------------------------------------------------
+# Celery Beat Periodic Tasks Schedule
+# -----------------------------------------------------------------------------
+# Celery Beat acts as a cron-like scheduler. It reads this dictionary and enqueues
+# task messages into Redis automatically at specified intervals or crontab times.
+CELERY_BEAT_SCHEDULE = {
+    # 1. Generate Daily Platform Report every day at Midnight (12:00 AM UTC)
+    "generate-daily-report-every-midnight": {
+        "task": "apps.core.tasks.generate_daily_report",
+        "schedule": crontab(minute=0, hour=0),
+    },
+    # 2. Check and send Subscription Reminders every day at 8:00 AM UTC
+    "check-subscription-reminders-every-morning": {
+        "task": "apps.core.tasks.check_subscription_reminders",
+        "schedule": crontab(minute=0, hour=8),
+    },
+}
 
 
 # -----------------------------------------------------------------------------
@@ -250,6 +267,10 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
+
+# Explicitly align Celery timezone with Django's TIME_ZONE setting.
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
 
 # -----------------------------------------------------------------------------
 # Static & Media
