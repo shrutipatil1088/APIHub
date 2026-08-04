@@ -8,7 +8,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, inline_serializer
 
-from .tasks import say_hello, generate_daily_report, check_subscription_reminders
+from .tasks import (
+    say_hello,
+    generate_daily_report,
+    check_subscription_reminders,
+    delete_old_usage_logs,
+)
 
 
 class HealthCheckAPIView(APIView):
@@ -188,5 +193,44 @@ Permissions:
 
         return Response(
             {"message": "Subscription reminder task queued successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class DeleteOldUsageLogsAPIView(APIView):
+    """
+    Temporary DRF API endpoint for learning Celery log cleanup tasks.
+    Triggers delete_old_usage_logs.delay() asynchronously.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Trigger Old Usage Logs Cleanup Task",
+        description="""
+Triggers the delete_old_usage_logs Celery task asynchronously using .delay().
+Bulk deletes UsageLog records older than 90 days in the background worker.
+
+Permissions:
+- Public (Unauthenticated)
+""",
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="DeleteOldUsageLogsResponse",
+                fields={
+                    "message": serializers.CharField(),
+                },
+            )
+        },
+        tags=["Celery Learning"],
+    )
+    def post(self, request):
+        # Trigger the old usage log cleanup task asynchronously.
+        # Enqueues task into Redis and returns immediately.
+        delete_old_usage_logs.delay()
+
+        return Response(
+            {"message": "Old usage log cleanup task queued successfully."},
             status=status.HTTP_200_OK,
         )

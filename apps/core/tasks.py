@@ -138,3 +138,26 @@ def check_subscription_reminders():
     logger.info("Subscription reminder task completed. Total reminders sent: %d", processed_count)
 
     return {"processed": processed_count}
+
+
+@shared_task
+def delete_old_usage_logs():
+    """
+    Celery background task that performs bulk deletion of UsageLog records older than 90 days.
+    Frees database disk space, reduces index bloat, and improves query performance.
+    """
+    logger.info("Starting cleanup of old usage logs...")
+    cutoff_date = timezone.now() - timedelta(days=90)
+
+    # Filter usage logs created prior to 90 days ago
+    old_logs = UsageLog.objects.filter(created_at__lt=cutoff_date)
+
+    # Efficient bulk deletion in a single SQL query (DELETE FROM usage_logs WHERE created_at < ...)
+    deleted_count, _ = old_logs.delete()
+
+    if deleted_count > 0:
+        logger.info("Deleted %d old usage logs.", deleted_count)
+    else:
+        logger.info("No old usage logs found.")
+
+    return {"deleted_count": deleted_count}

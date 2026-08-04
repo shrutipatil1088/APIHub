@@ -4,6 +4,7 @@ from .views import (
     TestCeleryAPIView,
     GenerateDailyReportAPIView,
     SubscriptionReminderAPIView,
+    DeleteOldUsageLogsAPIView,
 )
 
 urlpatterns = [
@@ -26,5 +27,10 @@ urlpatterns = [
         "subscription-reminder/",
         SubscriptionReminderAPIView.as_view(),
         name="subscription-reminder",
+    ),
+    path(
+        "delete-old-logs/",
+        DeleteOldUsageLogsAPIView.as_view(),
+        name="delete-old-logs",
     ),
 ]

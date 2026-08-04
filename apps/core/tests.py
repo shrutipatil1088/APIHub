@@ -10,8 +10,14 @@ from apps.accounts.models import User
 from apps.api_catalog.models import API
 from apps.developer_projects.models import DeveloperProject
 from apps.subscriptions.models import SubscriptionPlan, UserSubscription
+from apps.usage_logs.models import UsageLog
 from apps.notifications.models import Notification
-from apps.core.tasks import say_hello, generate_daily_report, check_subscription_reminders
+from apps.core.tasks import (
+    say_hello,
+    generate_daily_report,
+    check_subscription_reminders,
+    delete_old_usage_logs,
+)
 
 
 class HealthCheckAPITests(APITestCase):
@@ -149,4 +155,58 @@ class CeleryTaskTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Subscription reminder task queued successfully.")
+        mock_delay.assert_called_once()
+
+    def test_delete_old_usage_logs_task_execution(self):
+        dev = User.objects.create_user(
+            email="log_cleanup_dev@example.com",
+            password="securepassword123",
+            full_name="Log Dev",
+            role=User.Role.DEVELOPER,
+        )
+        project = DeveloperProject.objects.create(
+            developer=dev,
+            name="Log Cleanup Project",
+            description="Project for testing log cleanup task",
+        )
+
+        # Create recent log (created_at = now)
+        recent_log = UsageLog.objects.create(
+            project=project,
+            endpoint="/api/v1/test/",
+            method="GET",
+            status_code=200,
+            response_time_ms=50,
+        )
+
+        # Create old log (>90 days old)
+        old_log = UsageLog.objects.create(
+            project=project,
+            endpoint="/api/v1/old-test/",
+            method="POST",
+            status_code=201,
+            response_time_ms=120,
+        )
+        # Update created_at timestamp to 95 days ago
+        old_date = timezone.now() - timedelta(days=95)
+        UsageLog.objects.filter(id=old_log.id).update(created_at=old_date)
+
+        result = delete_old_usage_logs()
+
+        self.assertEqual(result["deleted_count"], 1)
+
+        # Verify old log is deleted and recent log still exists
+        self.assertFalse(UsageLog.objects.filter(id=old_log.id).exists())
+        self.assertTrue(UsageLog.objects.filter(id=recent_log.id).exists())
+
+    @patch("apps.core.views.delete_old_usage_logs.delay")
+    def test_delete_old_usage_logs_endpoint(self, mock_delay):
+        url = reverse("delete-old-logs")
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["message"],
+            "Old usage log cleanup task queued successfully.",
+        )
         mock_delay.assert_called_once()

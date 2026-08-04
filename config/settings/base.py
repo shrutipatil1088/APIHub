@@ -212,6 +212,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.core.tasks.check_subscription_reminders",
         "schedule": crontab(minute=0, hour=8),
     },
+    # 3. Clean up Usage Logs older than 90 days every Sunday at 2:00 AM UTC
+    "delete-old-usage-logs-every-sunday": {
+        "task": "apps.core.tasks.delete_old_usage_logs",
+        "schedule": crontab(minute=0, hour=2, day_of_week=0),
+    },
 }
 
 
