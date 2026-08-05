@@ -1,19 +1,21 @@
 # Everything under services: is called a container.
-# you have 5 containers:
-
-# Docker
-# │
-# ├── PostgreSQL
-# ├── Redis
-# ├── Django (web)
-# ├── Celery Worker
-# └── Celery Beat
-
-# Image = ready-made software template.
-
-# volumes = Permanent Hard Disk
-# Without volume = Delete container -> All database lost
-# With volume = Delete container -> Database still exists
+# Architecture Overview:
+#
+# Client / Browser (Port 80)
+#       │
+#       ▼
+# [ nginx ] (Reverse Proxy & Static File Server)
+#       │
+#       ├── Serves /static/ & /media/ directly from shared volumes
+#       └── Proxies dynamic API & WebSocket traffic to Daphne (Port 8000)
+#               │
+#               ▼
+#        [ web ] (Django ASGI Daphne App)
+#               │
+#               ├── [ db ] (PostgreSQL 17)
+#               ├── [ redis ] (Redis 7 Message Broker & Cache)
+#               ├── [ celery_worker ] (Background Task Execution)
+#               └── [ celery_beat ] (Task Scheduler)
 
 services:
   db:
@@ -46,13 +48,15 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # one image for web, celery_worker, and celery_beat
-  # build: . means build the image from the Dockerfile in the current directory
+  # Django Web Application Container running Daphne ASGI Server
   web:
     build: .
     command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
-    ports:
-      - "8000:8000"
+    # Internal communication only: Expose port 8000 to other containers on the Docker network.
+    # Port 8000 is NOT published to the host system directly (Nginx acts as the sole entry point).
+    # Port 8000 is only for internal communication between Nginx and the Django app.
+    expose:
+      - "8000"
     env_file:
       - .env.docker
     environment:
@@ -66,6 +70,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy Container
+  # Acts as the public entrypoint on host port 80. Serves static & media files directly
+  # and proxies dynamic/WebSocket requests to the internal 'web' container on port 8000.
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+    depends_on:
+      web:
+        condition: service_started
     restart: unless-stopped
 
   celery_worker:
