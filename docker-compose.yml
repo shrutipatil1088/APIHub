@@ -1,0 +1,107 @@
+# Everything under services: is called a container.
+# you have 5 containers:
+
+# Docker
+# │
+# ├── PostgreSQL
+# ├── Redis
+# ├── Django (web)
+# ├── Celery Worker
+# └── Celery Beat
+
+# Image = ready-made software template.
+
+# volumes = Permanent Hard Disk
+# Without volume = Delete container -> All database lost
+# With volume = Delete container -> Database still exists
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-apihub_db}
+      POSTGRES_USER: ${POSTGRES_USER:-apihub_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apihub_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-apihub_user} -d ${POSTGRES_DB:-apihub_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # one image for web, celery_worker, and celery_beat
+  # build: . means build the image from the Dockerfile in the current directory
+  web:
+    build: .
+    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      - RUN_MIGRATIONS=true
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    command: celery -A config worker -l info
+    env_file:
+      - .env.docker
+    environment:
+      - RUN_MIGRATIONS=false
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    command: celery -A config beat -l info
+    env_file:
+      - .env.docker
+    environment:
+      - RUN_MIGRATIONS=false
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
