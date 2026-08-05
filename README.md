@@ -1,5 +1,6 @@
 # 🚀 APIHub - Enterprise API Management Platform
 
+[![CI Pipeline](https://github.com/shrutipatil1088/APIHub/actions/workflows/ci.yml/badge.svg)](https://github.com/shrutipatil1088/APIHub/actions)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Django](https://img.shields.io/badge/Django-5.2-092E20.svg?logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![DRF](https://img.shields.io/badge/Django_REST_Framework-3.15-red.svg?logo=django&logoColor=white)](https://www.django-rest-framework.org/)
