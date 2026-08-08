@@ -1,8 +1,4 @@
 from .base import *
 
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-# Development CORS
+# CORS configuration for local development and render
 CORS_ALLOW_ALL_ORIGINS = True

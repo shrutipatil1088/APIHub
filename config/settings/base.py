@@ -20,9 +20,17 @@ from datetime import timedelta
 # Base Configuration
 # -----------------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
 SECRET_KEY = config("SECRET_KEY")
+
+DEBUG = config("DEBUG", default=True, cast=bool)
+
+raw_allowed_hosts = config("ALLOWED_HOSTS", default="*")
+ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(",") if h.strip()]
+if "*" not in ALLOWED_HOSTS and ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
+
+raw_csrf_origins = config("CSRF_TRUSTED_ORIGINS", default="https://*.onrender.com,http://localhost,http://127.0.0.1")
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(",") if o.strip()]
 
 # -----------------------------------------------------------------------------
 # Installed Applications
