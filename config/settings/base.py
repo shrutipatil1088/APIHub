@@ -199,6 +199,16 @@ CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=f"redis://{REDIS_HOST}:{
 # Redis acts as the Result Backend where task execution results/statuses are stored.
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=f"redis://{REDIS_HOST}:{REDIS_PORT}/0")
 
+import ssl
+
+if CELERY_BROKER_URL.startswith("rediss://"):
+    CELERY_BROKER_USE_SSL = {
+        "ssl_cert_reqs": ssl.CERT_NONE
+    }
+    CELERY_REDIS_BACKEND_USE_SSL = {
+        "ssl_cert_reqs": ssl.CERT_NONE
+    }
+
 from celery.schedules import crontab
 
 # Use JSON format for serializing task data safely.
