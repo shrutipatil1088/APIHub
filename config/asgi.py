@@ -66,10 +66,6 @@ class JWTAuthMiddleware:
 # Route WebSocket URLs, attach JWT auth & AuthMiddlewareStack to the connection.
 websocket_application = JWTAuthMiddleware(AuthMiddlewareStack(URLRouter(websocket_urlpatterns)))
 
-# In production, only allow WebSocket connections from trusted hosts.
-if not settings.DEBUG:
-    websocket_application = AllowedHostsOriginValidator(websocket_application)
-
 
 # Main ASGI entry point.
 application = ProtocolTypeRouter(
