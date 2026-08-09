@@ -108,13 +108,11 @@ Permissions:
         tags=["Celery Learning"],
     )
     def post(self, request):
-        # Trigger the Celery task asynchronously.
-        # .delay() doesn't execute the function directly.
-        # It sends a task message to Redis queue and returns control immediately.
         say_hello.delay()
+        result = say_hello()
 
         return Response(
-            {"message": "Task queued successfully."},
+            {"message": "Task queued and executed successfully.", "data": result},
             status=status.HTTP_200_OK,
         )
 
@@ -122,7 +120,7 @@ Permissions:
 class GenerateDailyReportAPIView(APIView):
     """
     Temporary DRF API endpoint for learning Celery database tasks.
-    Triggers generate_daily_report.delay() asynchronously.
+    Triggers generate_daily_report.delay() asynchronously and prints report.
     """
 
     permission_classes = [AllowAny]
@@ -148,12 +146,14 @@ Permissions:
         tags=["Celery Learning"],
     )
     def post(self, request):
-        # Trigger the daily report task asynchronously.
-        # Returns control immediately without waiting for database query completion.
         generate_daily_report.delay()
+        report_data = generate_daily_report()
 
         return Response(
-            {"message": "Daily report task queued successfully."},
+            {
+                "message": "Daily report task executed successfully.",
+                "data": report_data,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -187,12 +187,14 @@ Permissions:
         tags=["Celery Learning"],
     )
     def post(self, request):
-        # Trigger the subscription reminder task asynchronously.
-        # Returns control immediately without waiting for task completion.
         check_subscription_reminders.delay()
+        reminder_data = check_subscription_reminders()
 
         return Response(
-            {"message": "Subscription reminder task queued successfully."},
+            {
+                "message": "Subscription reminder task executed successfully.",
+                "data": reminder_data,
+            },
             status=status.HTTP_200_OK,
         )
 
@@ -226,11 +228,13 @@ Permissions:
         tags=["Celery Learning"],
     )
     def post(self, request):
-        # Trigger the old usage log cleanup task asynchronously.
-        # Enqueues task into Redis and returns immediately.
         delete_old_usage_logs.delay()
+        cleanup_data = delete_old_usage_logs()
 
         return Response(
-            {"message": "Old usage log cleanup task queued successfully."},
+            {
+                "message": "Old usage log cleanup task executed successfully.",
+                "data": cleanup_data,
+            },
             status=status.HTTP_200_OK,
         )
